@@ -272,7 +272,7 @@ class GardenApp:
             from hand_input import HandReceiver, IntentGate
             self.hand_gate = IntentGate(getattr(args, "hand_rows", 2), getattr(args, "hand_cols", 3))
             self.hand = HandReceiver(getattr(args, "hand_host", "127.0.0.1"), getattr(args, "hand_port", 8765))
-            self.status = "Camera mode: one visitor. Move hand outside tray to arm. Fist plants; palm cultivates."
+            self.status = "Camera mode: one visitor. Exit tray to arm. Gesture mappings are shown in camera preview/Terminal."
 
     def handle_hand_intent(self, gesture, row, col):
         """Camera sections own roots; foliage never steals another section's input."""
@@ -291,10 +291,10 @@ class GardenApp:
             self.status = "Several roots in this section. Use the mouse to select explicitly."
             return
         if gesture == "closed_fist" and occupants:
-            self.status = "Plot occupied. Use open palm to cultivate."
+            self.status = "Plot occupied. Use your cultivation gesture."
             return
         if gesture == "open_palm" and not occupants:
-            self.status = "Empty plot. Use a closed fist to plant."
+            self.status = "Empty plot. Use your planting gesture."
             return
         self.speech.stop()
         self.dictation.cancel()

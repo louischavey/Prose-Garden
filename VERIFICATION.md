@@ -1,5 +1,7 @@
 # Packaging verification — 2026-10-21
 
+Gesture-only comparison update: four additional tests cover coordinate/anchor invariance across pose remappings; timed trial scoring, confusions and interruptions; and running the production test-mode loop with no UDP sends and no saved-profile changes. Full suite now has 52 passing tests. Camera calibration/mapping/anchor and the 0.70-score/600-ms action gate remain unchanged. New gesture candidates require physical comparison on the exhibit camera; no alternate pair has been automatically adopted or certified.
+
 Tracking-diagnostics update: three observation tests cover valid positions with uncertain poses (without allowing commands/rearm), outside-plane projection, and two-hand/slow-frame suppression. Full suite now has 48 tests. Live camera preview shows the palm anchor, tray grid, mapped coordinates, and separate failure reasons; uncertain gesture confidence alone no longer hides a valid garden cursor. Physical camera/Mac validation of this update remains required.
 
 White-tape update: six additional synthetic tests cover four-corner detection/mapping, missing/extra/colored patches, search-box exclusion, dim thresholds, temporal stability, and calibration-loop A -> stable proposal -> explicit Enter -> saved profile. Full suite now has 45 tests. Real tape/soil/lighting and native Mac UI validation remain required. No new dependencies were added.

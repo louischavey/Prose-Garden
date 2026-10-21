@@ -52,11 +52,11 @@ def map_point(matrix, x, y):
     return float(mapped[0]/mapped[2]), float(mapped[1]/mapped[2])
 
 
-def hand_observation(result, matrix, elapsed=0.):
+def hand_observation(result, matrix, elapsed=0., plant_pose="Closed_Fist", cultivate_pose="Open_Palm"):
     """Keep valid position independent of pose confidence; intent gate checks pose."""
     import numpy as np
     observation = dict(state="no_hand", gesture="unknown", score=0., point=None,
-                       anchor=None, mapped=None, reason="no_hand")
+                       anchor=None, mapped=None, reason="no_hand", raw_pose="None")
     if len(result.hand_landmarks) > 1:
         observation.update(state="ambiguous", reason="multiple_hands")
     elif len(result.hand_landmarks) == 1:
@@ -65,11 +65,12 @@ def hand_observation(result, matrix, elapsed=0.):
         mapped = map_point(matrix, *anchor)
         category = result.gestures[0][0] if result.gestures and result.gestures[0] else None
         score = float(category.score) if category else 0.
-        gesture = {"Closed_Fist": "closed_fist", "Open_Palm": "open_palm"}.get(category.category_name if category else "", "unknown")
+        raw_pose = category.category_name if category else "None"
+        gesture = {plant_pose: "closed_fist", cultivate_pose: "open_palm"}.get(raw_pose, "unknown")
         inside = mapped is not None and all(0 <= value <= 1 for value in mapped)
         reason = "palm_outside" if not inside else "gesture_uncertain" if score < .7 else "gesture_not_command" if gesture == "unknown" else "ready_pose"
         observation.update(state="ok" if inside else "outside", gesture=gesture, score=score,
-                           point=mapped if inside else None, anchor=anchor, mapped=mapped, reason=reason)
+                           point=mapped if inside else None, anchor=anchor, mapped=mapped, reason=reason, raw_pose=raw_pose)
     if elapsed > .5:
         observation.update(state="ambiguous", point=None, reason="processing_slow")
     return observation
@@ -188,6 +189,7 @@ def calibrate(cap, args):
 
 
 def main():
+    from gesture_trials import POSES, GestureTrials, default_report
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--camera", type=int, default=0, help="Camera index; use 1/2 for a USB webcam")
     parser.add_argument("--host", default="127.0.0.1", help="Garden receiver host; localhost by default")
@@ -200,11 +202,18 @@ def main():
     parser.add_argument("--download-model", action="store_true", help="Download official version-1 model then exit")
     parser.add_argument("--confirm-setup", action="store_true", help="Confirm saved calibration still matches camera/tray placement")
     parser.add_argument("--no-preview", action="store_true")
+    parser.add_argument("--gesture-test", action="store_true", help="Timed comparison of candidate poses; sends NO garden packets")
+    parser.add_argument("--plant-pose", choices=POSES, default="Closed_Fist")
+    parser.add_argument("--cultivate-pose", choices=POSES, default="Open_Palm")
     args = parser.parse_args()
     if args.download_model:
         download_model(args.model)
         print(f"Model saved: {args.model}")
         return
+    if args.plant_pose == args.cultivate_pose:
+        parser.error("Plant and cultivate poses must differ")
+    if args.gesture_test and (args.no_preview or args.calibrate):
+        parser.error("Gesture test uses the existing profile: --confirm-setup --gesture-test, with preview enabled")
     from hand_input import IntentGate
     IntentGate(args.rows, args.cols)
     if not args.model.exists():
@@ -220,13 +229,13 @@ def main():
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     session, seq = uuid.uuid4().hex, 0
-    def send(state, gesture="unknown", score=0., point=None, reason=""):
+    def send(state, gesture="unknown", score=0., point=None, reason="", raw_pose="None"):
         nonlocal seq
         seq += 1
         message = {"version": 1, "session": session, "seq": seq, "sent_at": time.time(),
                    "calibration": profile["id"], "rows": args.rows, "cols": args.cols,
                    "state": state, "x": point[0] if point else None, "y": point[1] if point else None,
-                   "gesture": gesture, "score": float(score), "reason": reason}
+                   "gesture": gesture, "score": float(score), "reason": reason, "raw_pose": raw_pose}
         sock.sendto(json.dumps(message, allow_nan=False).encode(), (args.host, args.port))
         return message
     try:
@@ -236,32 +245,41 @@ def main():
         if profile.get("version") != 1 or profile.get("camera") != args.camera or (profile.get("rows"), profile.get("cols")) != (args.rows, args.cols):
             raise ValueError("Camera/layout differs from saved profile; use --calibrate")
         matrix = transform_from_corners(profile["corners"], profile["width"], profile["height"])
+        trials = GestureTrials(default_report(ROOT), dict(camera=args.camera, calibration=profile["id"])) if args.gesture_test else None
         options = mp.tasks.vision.GestureRecognizerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(args.model)),
             running_mode=mp.tasks.vision.RunningMode.VIDEO, num_hands=2)
-        print(f"Streaming to {args.host}:{args.port}. Leave tray or use a neutral pose to arm; Q quits.")
+        if trials:
+            print(f"GESTURE TEST: no garden actions sent. Press 1-5 for trials; report: {trials.path}")
+        else:
+            print(f"Streaming to {args.host}:{args.port}. Plant={args.plant_pose}; cultivate={args.cultivate_pose}. Exit tray to arm; Q quits.")
         previous_ms = -1
         with mp.tasks.vision.GestureRecognizer.create_from_options(options) as recognizer:
             while True:
                 start = time.monotonic()
                 ok, frame = cap.read()
                 if not ok:
-                    send("no_hand")
+                    if not trials:
+                        send("no_hand")
                     raise RuntimeError("Camera disconnected; restart and verify calibration")
                 height, width = frame.shape[:2]
                 if (width, height) != (profile["width"], profile["height"]):
-                    send("uncalibrated")
+                    if not trials:
+                        send("uncalibrated")
                     raise ValueError("Frame dimensions changed; recalibrate")
                 stamp = max(previous_ms+1, int(time.monotonic()*1000))
                 previous_ms = stamp
                 result = recognizer.recognize_for_video(mp.Image(image_format=mp.ImageFormat.SRGB,
                     data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)), stamp)
-                observation = hand_observation(result, matrix, time.monotonic()-start)
+                observation = hand_observation(result, matrix, time.monotonic()-start, args.plant_pose, args.cultivate_pose)
                 state, gesture, score, point = (observation[k] for k in ("state", "gesture", "score", "point"))
                 for landmarks in result.hand_landmarks:
                     for lm in landmarks:
                         cv2.circle(frame, (int(lm.x*width), int(lm.y*height)), 3, (100, 255, 100), -1)
-                send(state, gesture, score, point, observation["reason"])
+                if trials:
+                    trials.update(observation, time.monotonic())
+                else:
+                    send(state, gesture, score, point, observation["reason"], observation["raw_pose"])
                 if not args.no_preview:
                     inverse = np.linalg.inv(matrix)
                     for r in range(args.rows):
@@ -278,7 +296,7 @@ def main():
                         cv2.circle(frame, xy, 10, (0, 255, 255) if state == "ok" else (0, 0, 255), 3)
                     mapped = observation["mapped"]
                     position = f" x={mapped[0]:.2f} y={mapped[1]:.2f}" if mapped else ""
-                    label = f"POSITION {state}{position} | {gesture} {score:.2f}"
+                    label = f"POSITION {state}{position} | {observation['raw_pose']} {score:.2f}"
                     help_text = {"palm_outside": "Palm-center ring is outside tray. Move lower/inside; check calibration.",
                                  "multiple_hands": "Two hands visible: remove the other hand from camera view.",
                                  "gesture_uncertain": "Position tracked; pose unclear. Commands still require score >=0.70.",
@@ -286,14 +304,24 @@ def main():
                                  "processing_slow": "Frame processing >0.5s: commands paused.",
                                  "no_hand": "No hand detected.",
                                  "ready_pose": "Position and pose detected. Exit tray to arm, then hold pose inside."}[observation["reason"]]
+                    if not trials and observation["reason"] == "ready_pose":
+                        help_text = "Plant="+args.plant_pose+" | Cultivate="+args.cultivate_pose+" | Exit tray to arm; hold inside."
                     cv2.rectangle(frame, (0, 0), (width, 54), (20, 20, 20), -1)
                     cv2.putText(frame, label, (8, 20), 0, .44, (255, 255, 255), 1)
                     cv2.putText(frame, help_text, (8, 43), 0, .38, (255, 255, 255), 1)
+                    if trials:
+                        frame = cv2.copyMakeBorder(frame, 0, 65, 0, 0, cv2.BORDER_CONSTANT, value=(20,20,20))
+                        cv2.putText(frame, "TEST ONLY: 1 Fist | 2 Palm | 3 V sign | 4 Index | 5 Thumbs-up", (8, height+20), 0, .43, (255,255,255), 1)
+                        cv2.putText(frame, trials.status(time.monotonic()), (8, height+44), 0, .43, (255,255,255), 1)
                     cv2.imshow("Poetree hand stream (unmirrored) - Q quits", frame)
-                    if cv2.waitKey(1) & 255 in (ord('q'), 27):
+                    key = cv2.waitKey(1) & 255
+                    if trials and ord('1') <= key <= ord('5'):
+                        trials.start(key-ord('1'), time.monotonic())
+                    if key in (ord('q'), 27):
                         break
                 time.sleep(max(0, 1/30-(time.monotonic()-start)))
-        send("no_hand")
+        if not trials:
+            send("no_hand")
     finally:
         cap.release()
         sock.close()

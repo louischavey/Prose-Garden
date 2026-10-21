@@ -77,7 +77,11 @@ class HandReceiver:
                 self.batch.append((self.last_received, data))
                 self.message = "Hand stream: " + data["state"]
                 if data["state"] == "ok":
-                    pose = "pose unclear" if data["score"] < .7 else data["gesture"]
+                    # Only display known model labels from an optional newer sender.
+                    raw_pose = data.get("raw_pose")
+                    if raw_pose not in ("Closed_Fist", "Open_Palm", "Victory", "Pointing_Up", "Thumb_Up", "Thumb_Down", "ILoveYou", "None"):
+                        raw_pose = data["gesture"]
+                    pose = "pose unclear" if data["score"] < .7 else raw_pose
                     self.message = f"Position OK | {pose} {data['score']:.2f}"
                 elif data.get("reason") == "palm_outside":
                     self.message = "Hand outside mapped tray - check palm-center ring in camera"

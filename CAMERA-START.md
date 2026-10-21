@@ -2,6 +2,8 @@
 
 This Git checkout is the current project. Pull committed updates on the display Mac from the same repository; retain its local virtual environment, camera profile, and saved poems. Stop Poetree before updating its source. The Windows editing location is `C:/Users/HP/art_practice/poetree-camera-transfer/poetree-camera`. Earlier zip-transfer instructions below also apply to a fresh checkout.
 
+If position works but fist/palm recognition is finicky, see **GESTURE-TEST.md**. `camera_stream.py --confirm-setup --gesture-test` compares five poses without changing calibration or sending garden actions. The launcher supports `--plant-pose` and `--cultivate-pose` to use a tested alternative pair; defaults stay unchanged.
+
 Use Python **3.12**, macOS 11+ (Apple Silicon or Intel) or 64-bit Windows. Create the environment on that computer. The archive includes source, tests, grass asset, and the gesture model; it excludes old poems and machine-specific profiles.
 
 ## Mac: camera and garden on the same computer

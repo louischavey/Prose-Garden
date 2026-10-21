@@ -1,5 +1,7 @@
 # Packaging verification — 2026-10-21
 
+Tracking-diagnostics update: three observation tests cover valid positions with uncertain poses (without allowing commands/rearm), outside-plane projection, and two-hand/slow-frame suppression. Full suite now has 48 tests. Live camera preview shows the palm anchor, tray grid, mapped coordinates, and separate failure reasons; uncertain gesture confidence alone no longer hides a valid garden cursor. Physical camera/Mac validation of this update remains required.
+
 White-tape update: six additional synthetic tests cover four-corner detection/mapping, missing/extra/colored patches, search-box exclusion, dim thresholds, temporal stability, and calibration-loop A -> stable proposal -> explicit Enter -> saved profile. Full suite now has 45 tests. Real tape/soil/lighting and native Mac UI validation remain required. No new dependencies were added.
 
 Executed on Windows with Python 3.12.2:

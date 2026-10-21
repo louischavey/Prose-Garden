@@ -52,6 +52,29 @@ def map_point(matrix, x, y):
     return float(mapped[0]/mapped[2]), float(mapped[1]/mapped[2])
 
 
+def hand_observation(result, matrix, elapsed=0.):
+    """Keep valid position independent of pose confidence; intent gate checks pose."""
+    import numpy as np
+    observation = dict(state="no_hand", gesture="unknown", score=0., point=None,
+                       anchor=None, mapped=None, reason="no_hand")
+    if len(result.hand_landmarks) > 1:
+        observation.update(state="ambiguous", reason="multiple_hands")
+    elif len(result.hand_landmarks) == 1:
+        landmarks = result.hand_landmarks[0]
+        anchor = np.mean([[landmarks[i].x, landmarks[i].y] for i in (0, 5, 9, 13, 17)], axis=0)
+        mapped = map_point(matrix, *anchor)
+        category = result.gestures[0][0] if result.gestures and result.gestures[0] else None
+        score = float(category.score) if category else 0.
+        gesture = {"Closed_Fist": "closed_fist", "Open_Palm": "open_palm"}.get(category.category_name if category else "", "unknown")
+        inside = mapped is not None and all(0 <= value <= 1 for value in mapped)
+        reason = "palm_outside" if not inside else "gesture_uncertain" if score < .7 else "gesture_not_command" if gesture == "unknown" else "ready_pose"
+        observation.update(state="ok" if inside else "outside", gesture=gesture, score=score,
+                           point=mapped if inside else None, anchor=anchor, mapped=mapped, reason=reason)
+    if elapsed > .5:
+        observation.update(state="ambiguous", point=None, reason="processing_slow")
+    return observation
+
+
 def calibrate(cap, args):
     import cv2
     import numpy as np
@@ -197,13 +220,13 @@ def main():
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     session, seq = uuid.uuid4().hex, 0
-    def send(state, gesture="unknown", score=0., point=None):
+    def send(state, gesture="unknown", score=0., point=None, reason=""):
         nonlocal seq
         seq += 1
         message = {"version": 1, "session": session, "seq": seq, "sent_at": time.time(),
                    "calibration": profile["id"], "rows": args.rows, "cols": args.cols,
                    "state": state, "x": point[0] if point else None, "y": point[1] if point else None,
-                   "gesture": gesture, "score": float(score)}
+                   "gesture": gesture, "score": float(score), "reason": reason}
         sock.sendto(json.dumps(message, allow_nan=False).encode(), (args.host, args.port))
         return message
     try:
@@ -233,37 +256,39 @@ def main():
                 previous_ms = stamp
                 result = recognizer.recognize_for_video(mp.Image(image_format=mp.ImageFormat.SRGB,
                     data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)), stamp)
-                state, gesture, score, point = "no_hand", "unknown", 0., None
-                if len(result.hand_landmarks) > 1:
-                    state = "ambiguous"
-                elif len(result.hand_landmarks) == 1:
-                    landmarks = result.hand_landmarks[0]
-                    anchor = np.mean([[landmarks[i].x, landmarks[i].y] for i in (0, 5, 9, 13, 17)], axis=0)
-                    point = map_point(matrix, *anchor)
+                observation = hand_observation(result, matrix, time.monotonic()-start)
+                state, gesture, score, point = (observation[k] for k in ("state", "gesture", "score", "point"))
+                for landmarks in result.hand_landmarks:
                     for lm in landmarks:
                         cv2.circle(frame, (int(lm.x*width), int(lm.y*height)), 3, (100, 255, 100), -1)
-                    category = result.gestures[0][0] if result.gestures and result.gestures[0] else None
-                    score = category.score if category else 0.
-                    gesture = {"Closed_Fist": "closed_fist", "Open_Palm": "open_palm"}.get(category.category_name if category else "", "unknown")
-                    state = "ok" if point and all(0 <= v <= 1 for v in point) else "outside"
-                    # Uncertain pose cannot serve as an intentional neutral release.
-                    if state == "ok" and score < .7:
-                        state = "ambiguous"
-                    if state != "ok":
-                        point = None
-                # Processing stalls must not emit apparently fresh old commands.
-                if time.monotonic()-start > .5:
-                    state, point = "ambiguous", None
-                message = send(state, gesture, score, point)
+                send(state, gesture, score, point, observation["reason"])
                 if not args.no_preview:
                     inverse = np.linalg.inv(matrix)
                     for r in range(args.rows):
                         for c in range(args.cols):
+                            corners = [(c/args.cols, r/args.rows), ((c+1)/args.cols, r/args.rows),
+                                       ((c+1)/args.cols, (r+1)/args.rows), (c/args.cols, (r+1)/args.rows)]
+                            polygon = np.int32([np.array(map_point(inverse, *corner))*[width, height] for corner in corners])
+                            cv2.polylines(frame, [polygon], True, (0, 220, 220), 1)
                             center = map_point(inverse, (c+.5)/args.cols, (r+.5)/args.rows)
                             xy = tuple(np.int32(np.array(center)*[width, height]))
                             cv2.putText(frame, str(r*args.cols+c+1), xy, 0, .8, (0, 255, 255), 2)
-                    label = f"{state} {gesture} {score:.2f} " + (f"{point[0]:.2f},{point[1]:.2f}" if point else "")
-                    cv2.putText(frame, label, (8, 24), 0, .5, (0, 0, 255), 1)
+                    if observation["anchor"] is not None:
+                        xy = tuple(np.int32(observation["anchor"]*[width, height]))
+                        cv2.circle(frame, xy, 10, (0, 255, 255) if state == "ok" else (0, 0, 255), 3)
+                    mapped = observation["mapped"]
+                    position = f" x={mapped[0]:.2f} y={mapped[1]:.2f}" if mapped else ""
+                    label = f"POSITION {state}{position} | {gesture} {score:.2f}"
+                    help_text = {"palm_outside": "Palm-center ring is outside tray. Move lower/inside; check calibration.",
+                                 "multiple_hands": "Two hands visible: remove the other hand from camera view.",
+                                 "gesture_uncertain": "Position tracked; pose unclear. Commands still require score >=0.70.",
+                                 "gesture_not_command": "Position tracked. Neutral pose can rearm; fist plants, palm cultivates.",
+                                 "processing_slow": "Frame processing >0.5s: commands paused.",
+                                 "no_hand": "No hand detected.",
+                                 "ready_pose": "Position and pose detected. Exit tray to arm, then hold pose inside."}[observation["reason"]]
+                    cv2.rectangle(frame, (0, 0), (width, 54), (20, 20, 20), -1)
+                    cv2.putText(frame, label, (8, 20), 0, .44, (255, 255, 255), 1)
+                    cv2.putText(frame, help_text, (8, 43), 0, .38, (255, 255, 255), 1)
                     cv2.imshow("Poetree hand stream (unmirrored) - Q quits", frame)
                     if cv2.waitKey(1) & 255 in (ord('q'), 27):
                         break

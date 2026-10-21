@@ -1,0 +1,8 @@
+Grass Tile Sprite — Vincent Galliard / Summer Engine
+Source: https://www.summerengine.com/asset-store/grass-tile-sprite-767f957f
+Original image: https://res.cloudinary.com/dol86wsz1/image/upload/v1783073841/summer_transparent/nobg-4436d2ee7309-1783073840569.png
+License displayed by the asset listing: CC0
+https://creativecommons.org/publicdomain/zero/1.0/
+Retrieved 2026-10-04. Original PNG retained without offline modification.
+The program scales the field and overlays a light color wash for text readability.
+The listing identifies the image as made with Grok Imagine.

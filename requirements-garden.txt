@@ -1,0 +1,4 @@
+-r requirements.txt
+sounddevice==0.5.6
+SpeechRecognition==3.17.0
+pyserial==3.5

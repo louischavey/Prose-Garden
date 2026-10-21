@@ -1,5 +1,7 @@
 # Packaging verification — 2026-10-21
 
+White-tape update: six additional synthetic tests cover four-corner detection/mapping, missing/extra/colored patches, search-box exclusion, dim thresholds, temporal stability, and calibration-loop A -> stable proposal -> explicit Enter -> saved profile. Full suite now has 45 tests. Real tape/soil/lighting and native Mac UI validation remain required. No new dependencies were added.
+
 Executed on Windows with Python 3.12.2:
 
 - `python -m unittest -v`: 39 tests passed, including existing poem/garden/dirt regressions and six camera-stream tests.

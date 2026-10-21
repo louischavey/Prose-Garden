@@ -1,4 +1,6 @@
-# Transfer this folder to the display Mac
+# Run Poetree on Mac or Windows
+
+This Git checkout is the current project. Pull committed updates on the display Mac from the same repository; retain its local virtual environment, camera profile, and saved poems. Stop Poetree before updating its source. The Windows editing location is `C:/Users/HP/art_practice/poetree-camera-transfer/poetree-camera`. Earlier zip-transfer instructions below also apply to a fresh checkout.
 
 Use Python **3.12**, macOS 11+ (Apple Silicon or Intel) or 64-bit Windows. Create the environment on that computer. The archive includes source, tests, grass asset, and the gesture model; it excludes old poems and machine-specific profiles.
 
@@ -14,7 +16,7 @@ python3.12 -m venv .venv
 
 Allow camera access for Terminal/Python when macOS asks. Close other apps using the webcam. Camera 0 is the default; try `--camera 1` or `--camera 2` for USB cameras. Use a rigid temporary overhead mount and an outline of the tray before adding dirt.
 
-Click the tray's **top-left, top-right, bottom-right, bottom-left** corners in the unmirrored preview, inspect the six numbered sections, then press Enter. R clears calibration points; Q cancels. Use `--rows 2 --cols 2` for four sections (default is six in 2x3). This build assumes equal rectangular sections. Do not substitute an unrelated grid for the real layout.
+Press **A** in the calibration preview to detect four white tape patches at the tray corners, or click **top-left, top-right, bottom-right, bottom-left** manually. Inspect the numbered sections, then press Enter to accept. B limits tape search to a selected box; M shows the mask; +/- adjusts tape brightness; R resets for manual clicks; Q cancels. See **CALIBRATION.md** for placement and the full walkthrough. Use `--rows 2 --cols 2` for four sections (default is six in 2x3). This build assumes equal rectangular sections. Do not substitute an unrelated grid for the real layout.
 
 Frame some visible space **outside the tray** so a hand remains detectable while leaving it. A completely invisible hand does not rearm (it could be tracking loss). Alternatively show a confidently recognized non-command pose. Allow one visitor at a time. Once all four/six plots have plants, subsequent visitors cultivate them; there is no unlimited new-plant capacity in this camera layout.
 

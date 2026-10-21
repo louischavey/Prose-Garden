@@ -2,9 +2,9 @@
   "ADVERSARIAL_REVIEW.md": "19f237ec416d303d11270f067fd4e05928238dd4ff208f4bb1821e0a1e760e15",
   "assets/grass-summer.LICENSE.txt": "b1b36f4e869507d2d26137497ff5c24802dc32360f1b550a71c85af8e7587ac4",
   "assets/grass-summer.png": "9f9edc214b6b73956cd02887077a5af84c78546e89dcde342bce7f165264f92c",
-  "CAMERA-START.md": "e00e5f7012aaa22e5ab8b0224721cadb5a9f040ee44892dd087e3e8f87b40231",
-  "CAMERA_PLAN.md": "2d2401bad0b6e9c1188bc18cd9017433a19e8451c10632865bbaac5fde5d497b",
-  "camera_stream.py": "2f2475850304451ebf395e15e914cfb94be42208377c88cda78eac140280ba93",
+  "CAMERA-START.md": "69aef636904ee56f7ae782e369a4873d1c0cd18d0da2d7e0ef2bbcb3e3883c07",
+  "CAMERA_PLAN.md": "5fe44c4169c5bff56d18296e104848facfce51f8cdaa592b73845d239c551229",
+  "camera_stream.py": "6ab736968793e1201ae0c90376842cc64cfdfc74b08a6f8b208ce2c2cfc2ba51",
   "demo_hand_stream.py": "6fca65f0d0bcf0149a82a1a2c9a209e18c0bdfa8e5503281f4e0a8a3d46d3b2f",
   "DIRT-DEMO.md": "0885e09198d934043b627f0b0bf84e1a1322beede577a584bd63960b45a5fa81",
   "dirt_input.py": "42b92fc428c614f8911f95a6ebaf07d22f891cc9c0ee847803c1d637e7b689c5",
@@ -24,5 +24,10 @@
   "test_garden.py": "db11a383a900543da989f7063ba50562ab58ee482c48df36a72be3a8e38872d0",
   "test_hand_input.py": "c3794f67ebba86b364e12075ae7a4f5ddfd706c086be6a619617d15da6afede7",
   "test_plant_poem.py": "e75d6ed5b9c72c276f08da058758b3bb794ad5d0703740e13a6357fe5794f8db",
-  "VERIFICATION.md": "035aee0c6a553b0152210165218b9004a81dc168dff6b8c49ec40e67e63e610c"
+  "VERIFICATION.md": "cfdea4e10263dc409050d308bfe83889f0e411dde71baae4c125ecc02a983b3e",
+  "AGENTS.md": "fb22e9d8fb24c61582f27aedc3e38cc52d0fc75f6d903fc22c210d150360b3e3",
+  ".gitignore": "7206cea6bafdeb899c1273ab99531aa1a409765c851b3efbd299b366dab8b07a",
+  "CALIBRATION.md": "20f4aff64239ebce54b529e5542bc0ba097c4baed1d7b0cf4eddcb355e846b7d",
+  "tape_calibration.py": "94301596a5bad0007fb328a2325d30e99e65ab0393f65204af3488dff6ed6ccb",
+  "test_tape_calibration.py": "b064988a8b272471f4c606f127e629b31b7408787813db7b2acd42911a03cd27"
 }

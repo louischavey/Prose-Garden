@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pip-cache/
+.speech-cache/
+.tmp/
+output/
+test-output/
+camera-profile*.json
+.DS_Store

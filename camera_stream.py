@@ -55,15 +55,25 @@ def map_point(matrix, x, y):
 def calibrate(cap, args):
     import cv2
     import numpy as np
+    from tape_calibration import detect_tape_corners, StableTape
     points = []
-    title = "Poetree calibration - click TL, TR, BR, BL"
+    title = "Poetree calibration - A: white tape / click TL TR BR BL"
     cv2.namedWindow(title, cv2.WINDOW_AUTOSIZE)
     size = [1, 1]
+    mode = "manual"
     def click(event, x, y, flags, param):
+        nonlocal mode
         if event == cv2.EVENT_LBUTTONDOWN and len(points) < 4:
+            mode = "manual"
             points.append([x/size[0], y/size[1]])
     cv2.setMouseCallback(title, click)
     error = ""
+    auto = False
+    stable = StableTape()
+    value_min = 180
+    roi = None
+    show_mask = False
+    mask_title = "Tape mask - white pixels are candidates"
     try:
         while True:
             ok, frame = cap.read()
@@ -71,6 +81,21 @@ def calibrate(cap, args):
                 raise RuntimeError("Camera stopped during calibration")
             height, width = frame.shape[:2]
             size[:] = [width, height]
+            raw = frame.copy()
+            if auto:
+                proposed, mask, auto_status = detect_tape_corners(raw, value_min=value_min, roi=roi)
+                accepted = stable.update(proposed)
+                error = auto_status + f" | stable {len(stable.samples)}/8 | V>={value_min}"
+                if accepted is not None:
+                    points[:] = accepted
+                    mode, auto = "white_tape_centers", False
+            elif show_mask:
+                _, mask, _ = detect_tape_corners(raw, value_min=value_min, roi=roi)
+            if show_mask:
+                cv2.imshow(mask_title, mask)
+            if roi is not None:
+                x, y, w, h = roi
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 180, 0), 1)
             for i, point in enumerate(points):
                 xy = tuple(int(v) for v in np.array(point)*[width, height])
                 cv2.circle(frame, xy, 6, (0, 255, 255), -1)
@@ -87,32 +112,56 @@ def calibrate(cap, args):
                             cv2.polylines(frame, [image_poly], True, (100, 255, 100), 2)
                             center = map_point(inverse, (col+.5)/args.cols, (row+.5)/args.rows)
                             cv2.putText(frame, str(row*args.cols+col+1), tuple(np.int32(np.array(center)*[width, height])), 0, .8, (0, 255, 0), 2)
-                    error = "ENTER saves after checking overlay; R resets; Q quits"
+                    error = "Check tape CENTERS/grid. ENTER saves; A redetects; R manual; Q quits"
                 except ValueError as exc:
                     error = str(exc) + " - R resets"
-            else:
-                error = "Click TL, TR, BR, BL on soil-plane outline. R resets; Q quits"
-            cv2.putText(frame, error, (8, 24), 0, .42, (0, 0, 255), 1)
+            elif not auto:
+                error = "A: detect 4 white tape patches OR click TL, TR, BR, BL. R resets; Q quits"
+            # Dark panels keep instructions legible over both white tape and soil.
+            cv2.rectangle(frame, (0, 0), (width, 54), (20, 20, 20), -1)
+            cv2.putText(frame, error[:100], (8, 20), 0, .36, (255, 255, 255), 1)
+            cv2.putText(frame, "B: limit search area | +/-: tape brightness | M: mask | Enter: accept", (8, 43), 0, .4, (255, 255, 255), 1)
             cv2.imshow(title, frame)
             key = cv2.waitKey(20) & 255
             if key in (ord('q'), 27):
                 raise RuntimeError("Calibration cancelled")
             if key == ord('r'):
                 points.clear()
-            if key in (10, 13) and len(points) == 4:
+                mode, auto, stable = "manual", False, StableTape()
+            if key == ord('a'):
+                points.clear()
+                auto, stable = True, StableTape()
+            if key in (ord('+'), ord('='), ord('-')):
+                value_min = max(80, min(250, value_min + (10 if key in (ord('+'), ord('=')) else -10)))
+                points.clear()
+                auto, stable = True, StableTape()
+            if key == ord('b'):
+                box = cv2.selectROI("Choose tray search area - ENTER accepts", raw, showCrosshair=True, fromCenter=False)
+                cv2.destroyWindow("Choose tray search area - ENTER accepts")
+                roi = tuple(map(int, box)) if box[2] and box[3] else None
+                points.clear()
+                auto, stable = True, StableTape()
+            if key == ord('m'):
+                show_mask = not show_mask
+                if not show_mask:
+                    cv2.destroyWindow(mask_title)
+            if key in (10, 13) and len(points) == 4 and not auto:
                 try:
                     transform_from_corners(points, width, height)
                 except ValueError:
                     continue
                 profile = {"version": 1, "id": uuid.uuid4().hex, "camera": args.camera,
                            "width": width, "height": height, "rows": args.rows, "cols": args.cols,
-                           "corners": points}
+                           "corners": points, "method": mode,
+                           "tape_value_min": value_min, "tape_search_roi": roi}
                 args.profile.parent.mkdir(parents=True, exist_ok=True)
                 args.profile.write_text(json.dumps(profile, indent=2), encoding="utf-8")
                 print(f"Saved {args.profile}. Recalibrate after any camera/tray movement.")
                 return profile
     finally:
         cv2.destroyWindow(title)
+        if show_mask:
+            cv2.destroyWindow(mask_title)
 
 
 def main():

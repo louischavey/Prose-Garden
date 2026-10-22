@@ -16,4 +16,4 @@ Latest user exception: they explicitly authorized testing the existing pinch rul
 
 The user now needs keyboard-free exhibit input. `--voice-input` reuses the existing online dictation path for contextual plant type, 1–5 poem words, and explicit spoken confirmation/retry/cancel after a hand click. Preserve target locking, bounded retries, stale transcript rejection, and no automatic submission of unconfirmed words. See VOICE-INPUT.md.
 
-Exhibit hardware: M4 Mac mini, 16 GB. Voice mode now uses WebRTC VAD to finish after silence, bounded by existing capture caps. Optional --speech-backend whispercpp uses a warm localhost whisper-server, with no cloud fallback. See start_local_speech.sh and VOICE-INPUT.md. Preserve confirmation and target locking; benchmark native Mac latency, accuracy and gallery noise before declaring local recognition equivalent.
+Exhibit hardware: M4 Mac mini, 16 GB. Local transcription is deferred at user request. Keep online Google recognition plus WebRTC VAD silence detection, bounded captures, confirmation and target locking. Future hardening may revisit a warm local model after native Mac accuracy/latency testing.

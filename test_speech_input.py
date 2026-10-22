@@ -1,11 +1,7 @@
-import io
-import json
 import threading
 import unittest
-import wave
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import Mock
-from speech_input import capture_speech, local_transcribe
+from speech_input import capture_speech
 
 
 class SpeechInputTests(unittest.TestCase):
@@ -40,26 +36,3 @@ class SpeechInputTests(unittest.TestCase):
         self.assertIsNone(capture_speech(stream, stop, 7, vad))
         self.assertEqual(stream.read.call_count, 10)
 
-    def test_local_http_contract_contains_valid_wav_and_english(self):
-        captured = []
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(self):
-                captured.append((self.path, self.rfile.read(int(self.headers['Content-Length']))))
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(json.dumps({'text':' we grow together '}).encode())
-            def log_message(self, *args): pass
-        with HTTPServer(('127.0.0.1', 0), Handler) as server:
-            worker = threading.Thread(target=server.handle_request)
-            worker.start()
-            result = local_transcribe(b'\0'*3200, 16000, port=server.server_port)
-            worker.join(2)
-        self.assertEqual(result, 'we grow together')
-        path, body = captured[0]
-        self.assertEqual(path, '/inference')
-        self.assertIn(b'name="language"\r\n\r\nen\r\n', body)
-        wav = body[body.index(b'RIFF'):]
-        with wave.open(io.BytesIO(wav)) as audio:
-            self.assertEqual(audio.getframerate(), 16000)
-            self.assertEqual(audio.getnchannels(), 1)
-            self.assertEqual(audio.readframes(1600), b'\0'*3200)

@@ -1,10 +1,5 @@
-"""Bounded speech capture and a warm, loopback whisper.cpp backend."""
+"""Bounded microphone capture with WebRTC speech detection."""
 from collections import deque
-import io
-import json
-import uuid
-import wave
-from urllib.request import Request, urlopen
 
 
 def capture_speech(stream, stop, max_seconds, vad, silence_seconds=.8):
@@ -36,31 +31,3 @@ def capture_speech(stream, stop, max_seconds, vad, silence_seconds=.8):
         raise ValueError("No speech detected. Move closer to the microphone and try again.")
     return b"".join(chunks)
 
-
-def local_transcribe(pcm, rate, language="en-US", port=8080):
-    audio = io.BytesIO()
-    with wave.open(audio, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(rate)
-        wav.writeframes(pcm)
-    boundary = "poetree-" + uuid.uuid4().hex
-    fields = {"response_format":"json", "language":language.split("-")[0],
-              "temperature":"0.0", "temperature_inc":"0.0"}
-    body = bytearray()
-    for name, value in fields.items():
-        body.extend((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n').encode())
-    body.extend((f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="speech.wav"\r\nContent-Type: audio/wav\r\n\r\n').encode())
-    body.extend(audio.getvalue())
-    body.extend((f"\r\n--{boundary}--\r\n").encode())
-    request = Request(f"http://127.0.0.1:{port}/inference", data=bytes(body),
-                      headers={"Content-Type":f"multipart/form-data; boundary={boundary}"})
-    try:
-        with urlopen(request, timeout=15) as response:
-            result = json.loads(response.read(1048576))
-    except Exception as exc:
-        raise RuntimeError("Local transcription unavailable. Check whisper-server in the other Terminal. " + str(exc)) from exc
-    text = result.get("text", "").strip()
-    if not text:
-        raise ValueError("No words recognized. Please try again.")
-    return text

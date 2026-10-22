@@ -177,14 +177,14 @@ class Garden:
 class Dictation:
     """One short recording; recognition never submits words automatically."""
 
-    def __init__(self, events, device=None, language="en-US", backend="google", silence=False, whisper_port=8080):
+    def __init__(self, events, device=None, language="en-US", silence=False):
         self.events = events
         self.busy = False
         self.stop_event = threading.Event()
         self.ticket = 0
         self.device=device
         self.language=language
-        self.backend, self.silence, self.whisper_port = backend, silence, whisper_port
+        self.silence = silence
 
     def cancel(self):
         self.ticket += 1
@@ -206,7 +206,7 @@ class Dictation:
                 import sounddevice as sd
                 import speech_recognition as sr
                 rate = int(sd.query_devices(self.device,kind="input")["default_samplerate"])
-                if self.silence or self.backend == "whispercpp":
+                if self.silence:
                     rate = 16000
                 chunks = []
                 with sd.RawInputStream(samplerate=rate, channels=1, dtype="int16",device=self.device) as stream:
@@ -233,11 +233,7 @@ class Dictation:
                 recognizer.operation_timeout = 15
                 if ticket != self.ticket:
                     return
-                if self.backend == "whispercpp":
-                    from speech_input import local_transcribe
-                    text = local_transcribe(b"".join(chunks), rate, self.language, self.whisper_port)
-                else:
-                    text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2),language=self.language)
+                text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2),language=self.language)
                 outcome=("dictation",(ticket,text))
             except Exception as exc:
                 outcome=("dictation_error",(ticket,str(exc) or "Speech could not be understood."))
@@ -282,9 +278,7 @@ class GardenApp:
         self.events = queue.Queue()
         self.speech = Speech(self.events, args.voice)
         self.dictation = Dictation(self.events,getattr(args,"mic_device",None),getattr(args,"speech_language","en-US"),
-                                  backend=getattr(args,"speech_backend","google"),
-                                  silence=getattr(args,"voice_input",False),
-                                  whisper_port=getattr(args,"whisper_port",8080))
+                                  silence=getattr(args,"voice_input",False))
         from voice_flow import VoiceFlow
         self.voice_flow=VoiceFlow(self) if getattr(args,"voice_input",False) else None
         self.selected = None
@@ -908,7 +902,7 @@ class GardenApp:
             self.label("Say confirm to save; retry or cancel.", x, 400, font=pg.font.Font(None, 19))
             self.read_rect.top = 442
             self.read_rect.height = max(30, self.panel.bottom-64-self.read_rect.top)
-            self.label("Mic stays on this Mac" if getattr(self.dictation,"backend","google") == "whispercpp" else "Mic uses Google / internet required", x, 421, font=pg.font.Font(None, 17))
+            self.label("Mic uses Google / internet required", x, 421, font=pg.font.Font(None, 17))
         else:
             if self.selected:
                 plant = self.garden.get(self.selected)
@@ -1044,7 +1038,7 @@ class GardenApp:
             elif kind == "speech_error" and data[0] == self.speech.ticket:
                 self.status = str(data[1])
             elif kind == "dictating" and data == self.dictation.ticket:
-                self.status = "Transcribing locally..." if getattr(self.dictation,"backend","google") == "whispercpp" else "Transcribing online..."
+                self.status = "Transcribing online..."
             elif kind == "dictation" and data[0] == self.dictation.ticket:
                 if self.voice_flow is not None and self.voice_flow.receive(data[0],text=data[1]):
                     continue
@@ -1090,8 +1084,6 @@ def main():
     parser.add_argument("--voice", default="en-US-AriaNeural")
     parser.add_argument("--voice-input",action="store_true",help="After a hand click, speak type, words, and confirm/retry/cancel")
     parser.add_argument("--mic-device",type=lambda value:int(value) if value.isdigit() else value,help="sounddevice microphone index or name (default: system input)")
-    parser.add_argument("--speech-backend",choices=("google","whispercpp"),default="google")
-    parser.add_argument("--whisper-port",type=int,default=8080,help="Local whisper-server port")
     parser.add_argument("--speech-language",default="en-US",help="Transcription language")
     parser.add_argument("--serial-port", help="auto, or Metro USB port such as COM6 or /dev/cu.usbmodem...")
     parser.add_argument("--hand-stream", action="store_true", help="Receive normalized hand+gesture UDP packets")

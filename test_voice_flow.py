@@ -134,27 +134,6 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(app.draft,"confirm")
         self.assertEqual(len(app.garden.plants),0)
 
-    def test_local_worker_never_calls_google(self):
-        events=queue.Queue()
-        dictation=Dictation(events,backend="whispercpp",silence=True)
-        class ImmediateThread:
-            def __init__(self,target,**kwargs): self.target=target
-            def start(self): self.target()
-        with patch("garden.threading.Thread",ImmediateThread), \
-             patch.dict("sys.modules", {"webrtcvad":MagicMock()}), \
-             patch("sounddevice.query_devices",return_value={"default_samplerate":48000}), \
-             patch("sounddevice.RawInputStream") as stream, \
-             patch("speech_input.capture_speech",return_value=b"pcm"), \
-             patch("speech_input.local_transcribe",return_value="flower") as local, \
-             patch("speech_recognition.Recognizer") as cloud:
-            dictation.start(seconds=4)
-        self.assertFalse(dictation.busy)
-        self.assertEqual(stream.call_args.kwargs["samplerate"],16000)
-        local.assert_called_once_with(b"pcm",16000,"en-US",8080)
-        cloud.return_value.recognize_google.assert_not_called()
-        self.assertEqual(events.get_nowait(),("dictating",dictation.ticket))
-        self.assertEqual(events.get_nowait(),("dictation",(dictation.ticket,"flower")))
-
     def test_dictation_worker_publishes_result_after_busy_clears(self):
         events=queue.Queue()
         dictation=Dictation(events,device=3,language="en-US")

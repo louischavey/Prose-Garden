@@ -1,6 +1,6 @@
 # Keyboard-free plant type, words, and confirmation
 
-This reuses sounddevice capture and adds WebRTC VAD for speech detection. Google remains the default backend; optional whispercpp transcribes locally without cloud fallback. Both need microphone access. Google sends audio online; local mode sends audio only to localhost. Recordings stay in memory.
+This reuses sounddevice capture and adds WebRTC VAD for speech detection. Google transcribes online and needs internet plus microphone access. Audio is sent to Google. Recordings stay in memory.
 
 ## Start on Mac
 
@@ -51,30 +51,6 @@ Synthetic integration tests cover new plant/type/words/explicit confirmation, cu
 
 The side panel shows Type / Words / Confirm, recording or transcription state, and the draft awaiting confirmation. It replaces the keyboard entry controls in voice mode. Cultivation keeps the chosen plant selected after submission, with the original cream root marker, other plants faded, and a persistent SELECTED label. Camera mode focuses attention in the full garden without zooming or changing the calibrated cursor coordinates; choosing empty ground clears that focus. Cursor labels use cream lettering on solid dark green. The original grass stays vivid inside the planting border, with greyed reserved edges.
 
-## Local speech on the M4 / 16 GB exhibit Mac
+## Future hardening
 
-Stop Poetree, sync the Git source, and run from the project folder:
-
-```sh
-.venv/bin/python -m pip install -r requirements-garden.txt
-brew install cmake
-sh start_local_speech.sh
-```
-
-First run clones whisper.cpp, builds its Metal server and downloads pretrained small.en. It needs internet for setup and Apple developer tools. If tools are missing, run `xcode-select --install`, finish installation, then retry. Leave this Terminal open; subsequent runs reuse the build/model. Wait for the server to report listening on 127.0.0.1:8080.
-
-In another Terminal, from the same folder:
-
-```sh
-.venv/bin/python start_camera_garden.py --confirm-setup --enable-pinch --voice-input --speech-backend whispercpp --camera 0
-```
-
-Keep your working camera/profile/mic-device flags. The panel says the mic stays on this Mac; recognition status says Transcribing locally. Omitting --speech-backend keeps Google. Local failure never uploads to Google. Read-aloud still uses the existing online service independently. Ctrl-C in the server Terminal stops recognition. The ignored local-speech directory must be set up separately on each Mac.
-
-## Future hardening / acceptance
-
-Target: M4 Mac mini, 16 GB, one warm small.en model. Benchmark base.en only if small.en is too slow. Capture is 16 kHz mono; verify the microphone supports it. WebRTC VAD detects speech, not visitor identity; gallery conversation can extend recording to the cap. Test a close mic, initial consonants, pauses, silence, accents, ambient commands, and camera responsiveness. Measure end-of-speech to displayed transcript across at least 20 planting/cultivation entries. Compare exact words and command success against Google before calling accuracy equivalent. Preserve confirmation, target locking, bounded retries and stale transcript rejection.
-
-Tests cover early stopping, no speech, cancellation, caps, and a real loopback HTTP request containing valid WAV audio. Native Mac build, Metal inference, microphone, model quality and speed remain unverified on this Windows machine.
-
-Server protocol: https://github.com/ggml-org/whisper.cpp/tree/master/examples/server
+Exhibit hardware: M4 Mac mini, 16 GB. Local transcription is deferred; current recognition uses Google. Retain WebRTC VAD, confirmation and target locking. Validate speech endings, pauses, gallery noise and end-of-speech to transcript latency on the Mac.

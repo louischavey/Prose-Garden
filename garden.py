@@ -177,17 +177,19 @@ class Garden:
 class Dictation:
     """One short recording; recognition never submits words automatically."""
 
-    def __init__(self, events):
+    def __init__(self, events, device=None, language="en-US"):
         self.events = events
         self.busy = False
         self.stop_event = threading.Event()
         self.ticket = 0
+        self.device=device
+        self.language=language
 
     def cancel(self):
         self.ticket += 1
         self.stop_event.set()
 
-    def start(self):
+    def start(self, seconds=8):
         if self.busy:
             self.stop_event.set()
             return
@@ -198,13 +200,14 @@ class Dictation:
         stop = self.stop_event
 
         def record():
+            outcome=None
             try:
                 import sounddevice as sd
                 import speech_recognition as sr
-                rate = int(sd.query_devices(kind="input")["default_samplerate"])
+                rate = int(sd.query_devices(self.device,kind="input")["default_samplerate"])
                 chunks = []
-                with sd.RawInputStream(samplerate=rate, channels=1, dtype="int16") as stream:
-                    deadline = time.monotonic() + 8
+                with sd.RawInputStream(samplerate=rate, channels=1, dtype="int16",device=self.device) as stream:
+                    deadline = time.monotonic() + seconds
                     while not stop.is_set() and time.monotonic() < deadline:
                         chunk, overflow = stream.read(max(1, rate // 10))
                         if overflow:
@@ -217,12 +220,14 @@ class Dictation:
                 self.events.put(("dictating", ticket))
                 recognizer = sr.Recognizer()
                 recognizer.operation_timeout = 15
-                text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2))
-                self.events.put(("dictation", (ticket, text)))
+                text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2),language=self.language)
+                outcome=("dictation",(ticket,text))
             except Exception as exc:
-                self.events.put(("dictation_error", (ticket, str(exc) or "Speech could not be understood.")))
+                outcome=("dictation_error",(ticket,str(exc) or "Speech could not be understood."))
             finally:
                 self.busy = False
+                if outcome is not None and ticket==self.ticket:
+                    self.events.put(outcome)
         threading.Thread(target=record, daemon=True).start()
 
 
@@ -259,7 +264,9 @@ class GardenApp:
         self.sprite_cache = {}
         self.events = queue.Queue()
         self.speech = Speech(self.events, args.voice)
-        self.dictation = Dictation(self.events)
+        self.dictation = Dictation(self.events,getattr(args,"mic_device",None),getattr(args,"speech_language","en-US"))
+        from voice_flow import VoiceFlow
+        self.voice_flow=VoiceFlow(self) if getattr(args,"voice_input",False) else None
         self.selected = None
         self.pending = None
         self.kind = "flower"
@@ -294,6 +301,9 @@ class GardenApp:
         """Same click cultivates a snapped root or previews free-position planting."""
         if self.finished:
             return
+        if self.voice_flow is not None and self.voice_flow.active:
+            self.voice_flow.retry_click()
+            return
         if self.draft.strip() or self.dictation.busy:
             self.status = "Submit this draft or Escape to clear it before choosing another spot."
             return
@@ -311,8 +321,10 @@ class GardenApp:
         self.dictation.cancel()
         self.selected = plant.id if plant else None
         self.pending = None if plant else (x,y)
-        self.focus, self.zoom, self.pan, self.scroll = False, 1, [0,0], 0
+        self.focus, self.zoom, self.pan, self.scroll = bool(plant), 1, [0,0], 0
         self.status = "Cultivate selected plant: enter 1-5 words, then Enter/Water." if plant else "New planting spot: choose type, enter 1-5 words, then Enter/Water."
+        if self.voice_flow is not None:
+            self.voice_flow.begin()
 
     def poll_hand_click(self):
         data = self.hand.poll()
@@ -531,11 +543,30 @@ class GardenApp:
             image = self.pg.transform.scale(self.texture, (math.ceil(self.texture.get_width()*ratio), math.ceil(self.texture.get_height()*ratio)))
             surface = self.pg.Surface(size)
             surface.blit(image, ((size[0]-image.get_width())//2, (size[1]-image.get_height())//2))
-            wash = self.pg.Surface(size, self.pg.SRCALPHA)
-            wash.fill((225, 232, 181, 65))
-            surface.blit(wash, (0, 0))
             self.backgrounds[size] = surface
         return self.backgrounds[size]
+
+    def badge(self, surface, text, position, bounds):
+        """Readable labels over any grass pixel, constrained to the garden."""
+        glyph = self.ui.small.render(text, True, PAPER)
+        rect = glyph.get_rect().inflate(18, 10)
+        rect.topleft = position
+        rect.clamp_ip(bounds)
+        self.pg.draw.rect(surface, INK, rect, border_radius=6)
+        surface.blit(glyph, (rect.x+9, rect.y+5))
+
+    def panel_text(self, text, x, y, width=290, color=INK):
+        line = ""
+        for word in text.split():
+            candidate = (line+" "+word).strip()
+            if line and self.ui.small.size(candidate)[0] > width:
+                self.label(line, x, y, color)
+                y += 23
+                line = word
+            else:
+                line = candidate
+        self.label(line, x, y, color)
+        return y+23
 
     def draw_garden(self, surface, area, selected=None, interactive=False):
         pg = self.pg
@@ -545,7 +576,7 @@ class GardenApp:
             inner = pg.Rect(round(area.x+left*area.width), round(area.y+top*area.height),
                             round((right-left)*area.width), round((bottom-top)*area.height))
             border = pg.Surface(area.size, pg.SRCALPHA)
-            border.fill((30, 45, 20, 35))
+            border.fill((155, 158, 153, 115))
             border.fill((0, 0, 0, 0), inner.move(-area.x, -area.y))
             surface.blit(border, area)
             pg.draw.rect(surface, (206, 217, 160), inner, 1, border_radius=8)
@@ -586,8 +617,21 @@ class GardenApp:
                     pg.draw.rect(surface, HIGHLIGHT, dest.inflate(4, 4), 1, border_radius=3)
                 hits.append((dest, plant.id))
         # Root markers stay above foliage so a covered plant can still be reached.
+        if interactive and selected:
+            chosen = [rect for rect, pid in hits if pid == selected]
+            plant = self.garden.get(selected)
+            selection = pg.Rect(round(area.x+plant.x*area.width)-18,
+                                round(area.y+plant.y*area.height)-18, 36, 36)
+            for rect in chosen:
+                selection.union_ip(rect)
+            selection = selection.inflate(20, 20).clip(area.inflate(-8, -8))
+            pg.draw.rect(surface, INK, selection, 6, border_radius=10)
+            pg.draw.rect(surface, (255, 224, 105), selection, 3, border_radius=10)
         for plant in ordered:
             center = (round(area.x+plant.x*area.width), round(area.y+plant.y*area.height))
+            if interactive and plant.id == selected:
+                pg.draw.circle(surface, INK, center, 17)
+                pg.draw.circle(surface, (255, 224, 105), center, 14, 3)
             pg.draw.circle(surface, PAPER if plant.id == selected else (174, 191, 120), center, 7)
             pg.draw.circle(surface, INK, center, 7, 1)
         if interactive and self.pending:
@@ -615,10 +659,12 @@ class GardenApp:
                     pg.draw.circle(surface, (255, 230, 80), xy, 13, 3)
                     if self.hand_click:
                         label = "Cultivate this plant" if hovered else "Plant here" if self.garden.plantable(*cursor) else "Reserved edge"
-                        surface.blit(self.ui.small.render(label, True, PAPER), (max(area.x,min(xy[0]+18,area.right-180)), max(area.y,xy[1]-22)))
+                        if self.voice_flow is not None and self.voice_flow.active:
+                            label = "Voice target locked"
+                        self.badge(surface, label, (xy[0]+18, xy[1]-34), area.inflate(-8, -8))
                 fresh = self.hand.last_received is not None and time.monotonic()-self.hand.last_received < .5
                 status = self.hand.message if fresh else "Camera stream stopped - move outside tray after reconnect"
-                surface.blit(self.ui.small.render(status, True, INK), (area.x+8, area.bottom-28))
+                self.badge(surface, status, (area.x+8, area.bottom-34), area.inflate(-8, -8))
 
     def handle_garden_tap(self, x_normalized, y_normalized):
         """Public tap API: call on the UI thread; coordinates exclude controls."""
@@ -642,7 +688,7 @@ class GardenApp:
             return
         self.selected = plant.id if plant else None
         self.pending = None if plant else (x_normalized, y_normalized)
-        self.focus, self.zoom, self.pan, self.scroll = False, 1, [0, 0], 0
+        self.focus, self.zoom, self.pan, self.scroll = bool(plant), 1, [0, 0], 0
         self.status = "Add 1-5 words to water this plant." if plant else "Choose a plant and enter its first 1-5 words."
 
     def water_plant(self, plant_id, text):
@@ -687,6 +733,8 @@ class GardenApp:
             if action in PLANTS:
                 self.kind = action
             elif action == "water":
+                if self.voice_flow is not None and self.voice_flow.active and self.voice_flow.phase!="confirm":
+                    raise ValueError("Finish voice entry and review the draft before confirming.")
                 if self.finished:
                     raise ValueError("Garden finished. Reopen its JSON to continue.")
                 if self.dictation.busy:
@@ -706,6 +754,8 @@ class GardenApp:
                         self.checkpoint()
                     except OSError as exc:
                         self.status = f"Words accepted but recovery save failed: {exc}. Use Ctrl/Cmd+S."
+                if self.voice_flow is not None and self.voice_flow.active:
+                    self.voice_flow.submitted()
             elif action == "undo":
                 if self.finished:
                     raise ValueError("Reopen the saved garden to continue.")
@@ -725,6 +775,8 @@ class GardenApp:
                 self.focus = bool(self.selected) and not self.focus
                 self.zoom, self.pan = 1, [0, 0]
             elif action == "read":
+                if self.voice_flow is not None and self.voice_flow.active:
+                    raise ValueError("Finish or cancel voice entry before reading aloud.")
                 if not self.selected:
                     raise ValueError("Choose a plant to read.")
                 self.dictation.cancel()
@@ -733,8 +785,22 @@ class GardenApp:
             elif action == "stop":
                 self.speech.stop()
                 self.dictation.cancel()
+                if self.voice_flow is not None:
+                    self.voice_flow.cancel(clear=False)
                 self.status = "Stopped."
             elif action == "mic":
+                if self.voice_flow is not None:
+                    if self.voice_flow.active:
+                        self.voice_flow.retry_click()
+                    elif not (self.selected or self.pending) or self.finished:
+                        raise ValueError("Choose a planting spot or a plant first.")
+                    elif self.draft.strip():
+                        self.voice_flow.target=(self.selected,self.pending)
+                        self.voice_flow.failures=0
+                        self.voice_flow.schedule("confirm")
+                    else:
+                        self.voice_flow.begin()
+                    return
                 if not (self.selected or self.pending) or self.finished:
                     raise ValueError("Choose a planting spot or a plant first.")
                 self.speech.stop()
@@ -784,7 +850,7 @@ class GardenApp:
             actions += [("Save", "save"), ("Finish", "finish")]
         for i, (label, action) in enumerate(actions):
             self.button(label, (self.screen.get_width()-20-(len(actions)-i)*94, 24, 86, 34), action)
-        if self.focus and self.selected:
+        if self.focus and self.selected and self.hand is None:
             pg.draw.rect(self.screen, (236, 236, 214), self.area)
             plant = self.garden.get(self.selected)
             old = self.screen.get_clip()
@@ -801,30 +867,64 @@ class GardenApp:
             self.draw_dirt_overlay()
         pg.draw.rect(self.screen, (241, 239, 226), self.panel, border_radius=10)
         x = self.panel.x+16
-        title = "Water a plant" if self.selected else "Plant a poem"
+        title = "Cultivate this plant" if self.selected else "Plant a poem"
         self.label("Garden finished" if self.finished else title, x, 102, font=self.ui.title)
-        if self.selected:
-            plant = self.garden.get(self.selected)
-            self.label(f"{plant.session.plant.title()} / {len(plant.session.words)} words", x, 139)
+        if self.voice_flow is not None:
+            flow = self.voice_flow
+            if self.selected:
+                plant = self.garden.get(self.selected)
+                self.panel_text(f"SELECTED: {plant.session.plant.title()} / {len(plant.session.words)} words", x, 139)
+                self.label("Selection stays until you choose again.", x, 166, font=pg.font.Font(None, 19))
+            elif self.pending:
+                self.label("New planting spot selected", x, 139)
+            else:
+                self.panel_text("Point at a spot or plant, then pinch.", x, 139)
+            steps = [("Type", "type"), ("Words", "words"), ("Confirm", "confirm")]
+            for i, (name, phase) in enumerate(steps):
+                rect = pg.Rect(x+i*100, 194, 94, 29)
+                active = flow.phase == phase
+                pg.draw.rect(self.screen, INK if active else (221, 226, 209), rect, border_radius=6)
+                glyph = self.ui.small.render(name, True, PAPER if active else INK)
+                self.screen.blit(glyph, glyph.get_rect(center=rect.center))
+            # Status distinguishes capture from transcription, where speech is no longer recorded.
+            listening = self.status.startswith("Listening") and self.dictation.busy
+            state = "LISTENING" if listening else "TRANSCRIBING" if self.dictation.busy else "GET READY" if flow.pending else "VOICE PAUSED" if flow.phase == "error" else "READY"
+            self.label(state, x, 232, INK)
+            self.panel_text(flow.prompt, x, 257)
+            preview = pg.Rect(x, 310, 298, 65)
+            pg.draw.rect(self.screen, (255, 253, 243), preview, border_radius=6)
+            old = self.screen.get_clip()
+            self.screen.set_clip(preview.inflate(-12, -8))
+            self.panel_text(self.draft or "Your spoken words appear here.", x+8, 318, 280)
+            self.screen.set_clip(old)
+            self.label(f"{len(self.draft.split())} / 5 words", x, 380, font=pg.font.Font(None, 19))
+            self.label("Say confirm to save; retry or cancel.", x, 400, font=pg.font.Font(None, 19))
+            self.read_rect.top = 442
+            self.read_rect.height = max(30, self.panel.bottom-64-self.read_rect.top)
+            self.label("Mic uses Google / internet required", x, 421, font=pg.font.Font(None, 17))
         else:
-            self.label("Choose a spot on the grass.", x, 139)
-            for i, kind in enumerate(PLANTS):
-                self.button("Tree" if kind == "conifer" else kind.title(), (x+i*100, 174, 94, 34), kind, self.kind == kind)
-        self.label("Add 1-5 words / Enter to water", x, 222)
-        pg.draw.rect(self.screen, (221, 231, 207) if self.select_all else (255, 253, 243), self.input_rect, border_radius=6)
-        old = self.screen.get_clip()
-        self.screen.set_clip(self.input_rect.inflate(-12, -8))
-        # A horizontal draft with a visible caret; long text scrolls with the caret.
-        offset = max(0, self.ui.small.size(self.draft[:self.caret])[0]-self.input_rect.width+28)
-        self.label(self.draft or "Type here...", x+8-offset, 267)
-        caret_x = x+8+self.ui.small.size(self.draft[:self.caret])[0]-offset
-        pg.draw.line(self.screen, INK, (caret_x, 265), (caret_x, 288))
-        self.label(f"{len(self.draft.split())} words", x+8, 306)
-        self.screen.set_clip(old)
-        self.button("Water", (x, 345, 92, 34), "water", True)
-        self.button("Mic / end", (x+102, 345, 94, 34), "mic", self.dictation.busy)
-        self.button("Focus", (x+206, 345, 92, 34), "focus", self.focus)
-        self.label("Mic sends audio to Google for transcription.", x, 390, font=pg.font.Font(None, 17))
+            if self.selected:
+                plant = self.garden.get(self.selected)
+                self.label(f"{plant.session.plant.title()} / {len(plant.session.words)} words", x, 139)
+            else:
+                self.label("Choose a spot on the grass.", x, 139)
+                for i, kind in enumerate(PLANTS):
+                    self.button("Tree" if kind == "conifer" else kind.title(), (x+i*100, 174, 94, 34), kind, self.kind == kind)
+            self.label(self.voice_flow.prompt if self.voice_flow else "Add 1-5 words / Enter to water", x, 222)
+            pg.draw.rect(self.screen, (221, 231, 207) if self.select_all else (255, 253, 243), self.input_rect, border_radius=6)
+            old = self.screen.get_clip()
+            self.screen.set_clip(self.input_rect.inflate(-12, -8))
+            # A horizontal draft with a visible caret; long text scrolls with the caret.
+            offset = max(0, self.ui.small.size(self.draft[:self.caret])[0]-self.input_rect.width+28)
+            self.label(self.draft or "Type here...", x+8-offset, 267)
+            caret_x = x+8+self.ui.small.size(self.draft[:self.caret])[0]-offset
+            pg.draw.line(self.screen, INK, (caret_x, 265), (caret_x, 288))
+            self.label(f"{len(self.draft.split())} words", x+8, 306)
+            self.screen.set_clip(old)
+            self.button("Water", (x, 345, 92, 34), "water", True)
+            self.button("Mic / end", (x+102, 345, 94, 34), "mic", self.dictation.busy)
+            self.button("Focus", (x+206, 345, 92, 34), "focus", self.focus)
+            self.label("Mic sends audio to Google for transcription.", x, 390, font=pg.font.Font(None, 17))
         old = self.screen.get_clip()
         self.screen.set_clip(self.read_rect)
         if self.selected:
@@ -939,9 +1039,13 @@ class GardenApp:
             elif kind == "dictating" and data == self.dictation.ticket:
                 self.status = "Transcribing online..."
             elif kind == "dictation" and data[0] == self.dictation.ticket:
+                if self.voice_flow is not None and self.voice_flow.receive(data[0],text=data[1]):
+                    continue
                 self.insert_text((" " if self.draft else "")+data[1])
                 self.status = "Review your draft, then Water. Use 1-5 words."
             elif kind == "dictation_error" and data[0] == self.dictation.ticket:
+                if self.voice_flow is not None and self.voice_flow.receive(data[0],error=data[1]):
+                    continue
                 self.status = f"Dictation unavailable: {data[1]}"
 
     def run(self):
@@ -951,6 +1055,8 @@ class GardenApp:
                 for event in self.pg.event.get():
                     self.event(event)
                 self.process_messages()
+                if self.voice_flow is not None:
+                    self.voice_flow.poll()
                 self.poll_dirt()
                 self.poll_hand()
                 self.draw()
@@ -975,6 +1081,9 @@ def main():
     parser.add_argument("--gallery-mode", "--gallery_mode", action="store_true",
                         help="Hide Save and Finish buttons; close still saves the garden")
     parser.add_argument("--voice", default="en-US-AriaNeural")
+    parser.add_argument("--voice-input",action="store_true",help="After a hand click, speak type, words, and confirm/retry/cancel")
+    parser.add_argument("--mic-device",type=lambda value:int(value) if value.isdigit() else value,help="sounddevice microphone index or name (default: system input)")
+    parser.add_argument("--speech-language",default="en-US",help="Google transcription language")
     parser.add_argument("--serial-port", help="auto, or Metro USB port such as COM6 or /dev/cu.usbmodem...")
     parser.add_argument("--hand-stream", action="store_true", help="Receive normalized hand+gesture UDP packets")
     parser.add_argument("--hand-click", action="store_true", default=True, help="Default: one click gesture; snap to nearby roots or plant at cursor")
@@ -996,6 +1105,8 @@ def main():
         parser.error("--map-probes requires --serial-port")
     if args.hand_stream and (args.serial_port or args.mouse_only):
         parser.error("Use --hand-stream separately from --serial-port / --mouse-only")
+    if args.voice_input and not (args.hand_stream and args.hand_click):
+        parser.error("--voice-input requires --hand-stream in single-click mode")
     try:
         garden = Garden.load(args.load) if args.load else Garden(args.seed, not args.no_turns, args.connectors)
         GardenApp(garden, args).run()

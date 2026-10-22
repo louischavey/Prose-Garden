@@ -23,6 +23,9 @@ def main():
     parser.add_argument("--interaction", choices=("click", "legacy"), default="click")
     parser.add_argument("--click-pose", choices=("Closed_Fist","Open_Palm","Victory","Pointing_Up","Thumb_Up"), default="Thumb_Up")
     parser.add_argument("--enable-pinch", action="store_true", help="Also accept experimental pinch rule as the same click")
+    parser.add_argument("--voice-input",action="store_true",help="Keyboard-free plant type, dictation and spoken confirmation")
+    parser.add_argument("--mic-device")
+    parser.add_argument("--speech-language",default="en-US")
     parser.add_argument("--plant-pose")
     parser.add_argument("--cultivate-pose")
     args = parser.parse_args()
@@ -30,6 +33,8 @@ def main():
         parser.error("Use --calibrate for a new setup or --confirm-setup for an unchanged setup")
     if args.enable_pinch and args.interaction != "click":
         parser.error("--enable-pinch requires single-click interaction")
+    if args.voice_input and args.interaction != "click":
+        parser.error("--voice-input requires single-click interaction")
     try:
         _, args.plant_pose, args.cultivate_pose = pose_configuration(args.gesture_source, args.plant_pose, args.cultivate_pose)
     except ValueError as exc:
@@ -38,6 +43,10 @@ def main():
                    "--hand-rows", str(args.rows), "--hand-cols", str(args.cols), "--hand-port", str(args.port)]
     if args.load:
         garden_args += ["--load", args.load]
+    if args.voice_input:
+        garden_args += ["--voice-input","--speech-language",args.speech_language]
+    if args.mic_device is not None:
+        garden_args += ["--mic-device",args.mic_device]
     if args.interaction == "click":
         garden_args += ["--hand-click"]
     else:

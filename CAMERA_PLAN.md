@@ -4,6 +4,8 @@ CURRENT FLOW: the default launcher now uses one bundled-model click (Thumb_Up), 
 
 ## 1. Scope and verified source context
 
+Keyboard-free voice option: --voice-input starts contextual dictation after a single hand click. New roots ask flower/tree/fern, then words, then spoken confirm/retry/cancel. Cultivation skips type. The target stays locked; stale recognition cannot migrate to another plant. Failed recognition retries at most three times before pausing for a same-target hand-click retry. This reuses existing Google transcription and is internet-dependent; no live Mac audio validation has been performed here. See VOICE-INPUT.md.
+
 Latest optional test addition: `--enable-pinch` accepts an experimental tip-distance pinch rule alongside the model click, as explicitly requested by the user. Both sources use the same click/latch and snap target. The rule is not a pretrained model and is disabled by default; no changes to position or calibration. See GESTURE-TEST.md.
 Target: existing Python/Pygame garden.py in this folder. One visitor at a time puts a hand over one dirt tray divided into four to six sections. Fist requests planting; palm requests cultivation. Reuse the actual poem generator, editable draft, Water/Enter submission, speech, undo, and JSON/PNG saves. This document supersedes the earlier browser-based IMPLEMENTATION_PLAN.md in the chat workspace.
 

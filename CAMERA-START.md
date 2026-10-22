@@ -1,5 +1,7 @@
 # Run Poetree on Mac or Windows
 
+Keyboard-free input is available with `--voice-input`: after a hand click, speak plant type for a new root, then 1–5 words, then confirm/retry/cancel. Start with `start_camera_garden.py --confirm-setup --enable-pinch --voice-input`. See **VOICE-INPUT.md** for microphone permissions/device selection, recording windows, and the full visitor flow. It uses the existing online Google transcription service and never saves words without confirmation.
+
 This Git checkout is the current project. Pull committed updates on the display Mac from the same repository; retain its local virtual environment, camera profile, and saved poems. Stop Poetree before updating its source. The Windows editing location is `C:/Users/HP/art_practice/poetree-camera-transfer/poetree-camera`. Earlier zip-transfer instructions below also apply to a fresh checkout.
 
 The current default is **one model-based click with root snapping**. Thumb_Up is the click pose; it cultivates a nearby highlighted root or selects a new location on empty ground. Use `--click-pose` for another supported model label. The bundled model has no pinch label, and custom landmark classifiers have been removed. See **GESTURE-TEST.md** for current interaction and measurements. Your position anchor/calibration remain unchanged.

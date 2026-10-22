@@ -134,6 +134,28 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(app.draft,"confirm")
         self.assertEqual(len(app.garden.plants),0)
 
+    def test_voice_pause_starts_fresh_hold_without_changing_locked_target(self):
+        app=self.app
+        app.handle_hand_click(.3,.6)
+        gate=app.hand_gate
+        from test_hand_input import packet
+        gate.update(packet(state="outside"),0)
+        gate.update(packet(state="outside"),.31)
+        gate.latched=True
+        for _ in range(3): app.voice_flow.fail("No words")
+        self.assertEqual(app.voice_flow.phase,"error")
+        self.assertFalse(gate.latched)
+        self.assertEqual(gate.progress,0)
+        for i in range(23):
+            observation=packet(gesture="click",x=.7 if i%2 else .8,y=.8)
+            app.hand.batch=[(.4+i*.1,observation)]
+            with patch.object(app.hand,"poll",return_value=observation):
+                app.poll_hand_click()
+            if app.voice_flow.phase != "error":
+                break
+        self.assertEqual(app.pending,(.3,.6))
+        self.assertEqual(app.voice_flow.phase,"type")
+
     def test_dictation_worker_publishes_result_after_busy_clears(self):
         events=queue.Queue()
         dictation=Dictation(events,device=3,language="en-US")

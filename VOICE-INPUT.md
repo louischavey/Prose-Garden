@@ -14,7 +14,7 @@ Use your working camera/profile/layout flags. Allow microphone access for Termin
 
 ## Visitor flow (one person at a time)
 
-1. Release/rearm, point, and pinch/thumbs-up to click a spot or snapped plant as before. Position tracking and root snapping are unchanged.
+1. Release/rearm, point, and hold pinch/thumbs-up for 2 seconds to click. The circular cursor fills clockwise in teal as valid hold time accumulates. Position tracking and root snapping are unchanged.
 2. Watch the screen and **wait for Listening before speaking**. The microphone is not always on. A new planting asks for **flower**, **tree**, or **fern** (4-second recording). Tree maps to the existing conifer type. An existing plant skips type selection.
 3. The next Listening prompt asks for **1–5 poem words** (7-second recording). It transcribes online, then shows the draft. No poem changes yet.
 4. Review the displayed words/type. When Listening appears again (4-second command recording), say exactly **confirm**, **retry**, or **cancel**. Yes is accepted as confirm; try again/no means retry. Change type returns a new planting to the type question.
@@ -23,7 +23,7 @@ Use your working camera/profile/layout flags. Allow microphone access for Termin
 
 Recordings now end after speech plus about 0.8 seconds of silence. The 4/7/4-second windows are maximum capture times, including the wait to begin speaking. No detected speech triggers a retry without transcription. Wait through Transcribing and the next Listening message rather than speaking during the gap. Poem words are interpreted as text only during the words phase: e.g. confirm can itself be a poem word. Commands are interpreted during separate review.
 
-After three recognition/validation failures, recording pauses. Pinch again to retry the SAME target/phase. This keeps bad network/audio from recording indefinitely. Network or microphone failure cannot save an unconfirmed contribution. Stop pauses voice input while keeping a draft; the Mic button can restart voice review as an operator fallback. Read-aloud is blocked during active voice entry to avoid recording playback.
+After three recognition/validation failures, recording pauses. Hold pinch for 2 seconds to retry the SAME target/phase. On entering this paused state, hold progress starts fresh and you can retry without leaving the tray. This keeps bad network/audio from recording indefinitely. Network or microphone failure cannot save an unconfirmed contribution. Stop pauses voice input while keeping a draft; the Mic button can restart voice review as an operator fallback. Read-aloud is blocked during active voice entry to avoid recording playback.
 
 ## Select a microphone
 
@@ -54,3 +54,5 @@ The side panel shows Type / Words / Confirm, recording or transcription state, a
 ## Future hardening
 
 Exhibit hardware: M4 Mac mini, 16 GB. Local transcription is deferred; current recognition uses Google. Retain WebRTC VAD, confirmation and target locking. Validate speech endings, pauses, gallery noise and end-of-speech to transcript latency on the Mac.
+
+Pinch reliability: an explicitly open thumb/index gap rearms the optional pinch rule without needing a named model gesture. Brief uncertain classifications (up to 0.2 seconds) pause hold progress; confident release, tracking loss, target change or substantial empty-ground movement clears it. During voice entry, holds are ignored until a paused retry is offered. Retry holds do not change the locked target when the cursor moves. The camera diagnostic gesture trial still reports its historical 600 ms threshold; the frontend progress ring governs the actual 2-second activation.

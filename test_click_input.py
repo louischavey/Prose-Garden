@@ -14,7 +14,7 @@ from garden import Garden, GardenApp
 
 class ClickTests(unittest.TestCase):
     def test_single_click_hold_release_and_target_change(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=.6)
         outside=packet(state="outside",gesture="unknown")
         gate.update(outside,0)
         gate.update(outside,.31)
@@ -29,6 +29,36 @@ class ClickTests(unittest.TestCase):
         self.assertIsNone(gate.update(click,1.7,target_id="A"))
         validate(click)
 
+    def test_default_two_second_hold_progress_and_single_activation(self):
+        gate=ClickGate()
+        gate.update(packet(state="outside"),0)
+        gate.update(packet(state="outside"),.31)
+        event=None
+        for i in range(21):
+            event=gate.update(packet(gesture="click"),.4+i*.1,target_id="root")
+            if i==10:
+                self.assertAlmostEqual(gate.progress,.5)
+            if i<20:
+                self.assertIsNone(event)
+        self.assertIsNotNone(event)
+        self.assertIsNone(gate.update(packet(gesture="click"),2.5,target_id="root"))
+        self.assertEqual(gate.progress,0)
+
+    def test_brief_uncertainty_pauses_but_loss_clears_progress(self):
+        gate=ClickGate()
+        gate.update(packet(state="outside"),0)
+        gate.update(packet(state="outside"),.31)
+        for tick in (.4,.6,.8):
+            gate.update(packet(gesture="click"),tick)
+        progress=gate.progress
+        gate.update(packet(gesture="unknown",score=.2),.85)
+        gate.update(packet(gesture="click"),.95)
+        self.assertAlmostEqual(gate.progress,progress)
+        gate.update(packet(state="no_hand"),1.)
+        self.assertEqual(gate.progress,0)
+        self.assertIsNone(gate.update(packet(gesture="click"),1.1))
+        self.assertEqual(gate.progress,0)
+
     def test_root_snap_and_hysteresis_ignore_foliage(self):
         garden=Garden(42)
         a=garden.plant(.3,.5,"fern","first")
@@ -39,7 +69,7 @@ class ClickTests(unittest.TestCase):
         self.assertIsNone(garden.snap_root(.8,.8,a.id))
 
     def test_empty_cursor_movement_resets_confirmation(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=.6)
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
         gate.update(packet(gesture="click",x=.2),.4)
@@ -64,7 +94,7 @@ class ClickTests(unittest.TestCase):
         def release():
             for _ in range(4): frame(state="outside",gesture="unknown")
         def click(x=.18,y=.3):
-            for _ in range(8): frame(x=x,y=y)
+            for _ in range(22): frame(x=x,y=y)
         try:
             release(); click()
             self.assertEqual(app.pending,(.18,.3))  # Actual cursor, not section center.
@@ -96,7 +126,7 @@ class ClickTests(unittest.TestCase):
             sender.close(); app.hand.close(); app.speech.close(); app.pg.quit()
 
     def test_batched_tracking_loss_does_not_complete_click(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=.6)
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
         gate.update(packet(gesture="click"),.4,target_id="A")

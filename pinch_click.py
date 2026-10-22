@@ -30,4 +30,7 @@ def with_pinch_click(observation, landmarks, world_landmarks=None, aspect=.75):
                       click_source="pinch_rule")
         if result["state"] == "ok":
             result["reason"] = "ready_pose"
+    elif gap >= .45 and reach >= .35 and result["gesture"] != "click":
+        # Explicitly opened pinch rearms even if the model names no gesture.
+        result.update(gesture="unknown", score=1., click_source="pinch_release")
     return result

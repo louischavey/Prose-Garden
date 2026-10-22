@@ -50,6 +50,17 @@ class PinchTests(unittest.TestCase):
             self.assertEqual(chosen["gesture"],"click")
             self.assertEqual(chosen["click_source"],"model")
 
+    def test_open_pinch_rearms_without_model_label_and_preserves_position(self):
+        image,world=landmarks(.8,.7)
+        original=hand_observation(result(image,world),np.eye(3))
+        original.update(gesture="unknown",score=.1)
+        opened=with_pinch_click(original,image,world)
+        self.assertEqual(opened["click_source"],"pinch_release")
+        self.assertEqual(opened["score"],1.)
+        self.assertEqual(opened["gesture"],"unknown")
+        for name in ("anchor","mapped","point","state"):
+            np.testing.assert_array_equal(opened[name],original[name])
+
     def test_invalid_and_suppressed_tracking_do_not_create_pinch(self):
         image,world=landmarks()
         observation=hand_observation(result(image,world),np.eye(3),elapsed=.6)
@@ -59,7 +70,7 @@ class PinchTests(unittest.TestCase):
         self.assertNotEqual(with_pinch_click(observation,image,world)["raw_pose"],"Pinch")
 
     def test_switching_thumb_and_pinch_is_still_one_click_until_release(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=.6)
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
         events=[]

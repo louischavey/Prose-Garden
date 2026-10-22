@@ -52,10 +52,10 @@ class VoiceFlow:
     @property
     def prompt(self):
         if self.phase=="error":
-            return "Voice paused. Pinch to retry here."
+            return "Voice paused. Hold pinch 2s to retry."
         if self.pending:
             return "Wait for Listening before speaking"
-        return self.PROMPTS.get(self.phase,"Pinch a plant or an empty spot")
+        return self.PROMPTS.get(self.phase,"Hold pinch 2s on a plant or spot")
 
     def schedule(self,phase,delay=0.):
         self.phase=phase
@@ -114,6 +114,11 @@ class VoiceFlow:
             self.phase="error"
             self.pending=False
             self.ticket=None
+            gate = getattr(self.app, "hand_gate", None)
+            if gate is not None:
+                gate.interrupt()
+                # A fresh two-second hold retries only this locked voice target.
+                gate.latched = False
             self.app.status=message+". Voice paused; pinch to retry this same target."
         else:
             phase=self.phase

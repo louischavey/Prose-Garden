@@ -14,7 +14,7 @@ Use your working camera/profile/layout flags. Both a model Thumb_Up and the expe
 
 The rule compares the existing thumb/index tip distance with palm size and rejects a very short index reach. It uses existing estimated world landmarks when available, otherwise aspect-corrected image landmarks. It does not modify position coordinates, camera framing, calibration, or root snapping. Preview and garden identify Pinch as a rule; the score is a rule margin, not model confidence. `gap` shows the normalized tip separation.
 
-The same 0.6-second hold and release latch serve BOTH inputs: changing thumbs-up to pinch while held cannot create a duplicate click. Exit the tray visibly to rearm before clicking again. Test accidental pinches during ordinary reaching/gripping before visitors; this rule has synthetic tests, not a physical reliability certificate.
+The same 2-second hold and release latch serve BOTH inputs: changing thumbs-up to pinch while held cannot create a duplicate click. Exit the tray visibly to rearm before clicking again. Test accidental pinches during ordinary reaching/gripping before visitors; this rule has synthetic tests, not a physical reliability certificate.
 
 For timed measurement only, run `camera_stream.py --confirm-setup --enable-pinch --gesture-test --camera 0`. Key 5 measures model thumbs-up; key 6 measures the pinch rule. This mode sends no actions and preserves the calibration file. Remove --enable-pinch to return to model-only clicks.
 
@@ -31,7 +31,7 @@ Use your working camera index and existing rows/cols/profile. No recalibration i
 1. Move your visible hand outside the mapped garden for 0.3 seconds to arm. A confidently recognized non-click pose also releases the latch; losing tracking alone does not.
 2. Move the cursor toward a plant. The yellow ring snaps to its root and says Cultivate this plant. Snapping uses root proximity, never a neighboring branch/word sprite. Hysteresis reduces rapid switching between close roots.
 3. Over empty ground the cursor says Plant here; reserved edges cannot accept new roots. New roots use the actual cursor coordinate, not a grid center.
-4. Hold thumbs-up for 0.6 seconds at score >=0.70 to click. The current target must stay stable. Then enter/dictate 1-5 words and submit with Enter/Water, as before.
+4. Hold thumbs-up for 2 seconds at score >=0.70 to click. The current target must stay stable. Then enter/dictate 1-5 words and submit with Enter/Water, as before.
 5. Release/rearm before another click. A held gesture never continuously submits words. Unsubmitted drafts block changing targets. Accepted text is checkpointed; Finish blocks new edits.
 
 Thumb_Up is selected because it was the only label reported by the exhibit setup, not because a reliable physical hold has already been demonstrated. Test actual clicks and ordinary reaching before visitors.

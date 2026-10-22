@@ -163,16 +163,33 @@ class IntentGate:
 
 class ClickGate(IntentGate):
     """One model gesture clicks either a stable nearby root or empty ground."""
+    def __init__(self, rows=2, cols=3, hold=2., **kwargs):
+        super().__init__(rows, cols, hold=hold, **kwargs)
+        self.elapsed = 0.
+        self.gap_since = None
+
+    def interrupt(self):
+        super().interrupt()
+        self.elapsed = 0.
+        self.gap_since = None
+
+    @property
+    def progress(self):
+        return min(1., self.elapsed/self.hold) if self.candidate is not None else 0.
+
     def update(self, data, now=None, target_id=None):
         now = time.monotonic() if now is None else now
         identity = (data["session"], data["calibration"])
         if identity != self.identity or (self.last_time is not None and now-self.last_time > .5):
             self.interrupt()
             self.identity = identity
+        delta = max(0., now-self.last_time) if self.last_time is not None else 0.
         self.last_time = now
         neutral = data["state"] == "outside" or (data["state"] == "ok" and data["gesture"] == "unknown" and data["score"] >= self.score)
         if neutral:
             self.candidate = self.since = None
+            self.elapsed = 0.
+            self.gap_since = None
             if self.release_since is None:
                 self.release_since = now
             if now-self.release_since >= self.release:
@@ -180,7 +197,15 @@ class ClickGate(IntentGate):
             return None
         self.release_since = None
         if self.latched or data["state"] != "ok" or data["gesture"] != "click" or data["score"] < self.score:
+            # Brief uncertain classifications pause progress; lost/outside hands never count.
+            uncertain = data["state"] in ("ok", "ambiguous") and not self.latched
+            if uncertain and self.candidate is not None:
+                if self.gap_since is None:
+                    self.gap_since = now
+                if now-self.gap_since <= .2:
+                    return None
             self.candidate = self.since = None
+            self.elapsed = 0.
             return None
         point = (data["x"], data["y"])
         changed = self.candidate is None or self.candidate[0] != target_id
@@ -189,7 +214,13 @@ class ClickGate(IntentGate):
                                  (point[1]-self.candidate[1][1])*800) > 48
         if changed:
             self.candidate, self.since = (target_id, point), now
-        if now-self.since >= self.hold:
+            self.elapsed = 0.
+        elif self.gap_since is None:
+            self.elapsed += delta
+        elif now-self.gap_since > .2:
+            self.elapsed = 0.
+        self.gap_since = None
+        if self.elapsed >= self.hold:
             self.latched = True
             self.candidate = self.since = None
             return dict(x=point[0], y=point[1], target_id=target_id)

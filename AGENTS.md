@@ -17,3 +17,5 @@ Latest user exception: they explicitly authorized testing the existing pinch rul
 The user now needs keyboard-free exhibit input. `--voice-input` reuses the existing online dictation path for contextual plant type, 1–5 poem words, and explicit spoken confirmation/retry/cancel after a hand click. Preserve target locking, bounded retries, stale transcript rejection, and no automatic submission of unconfirmed words. See VOICE-INPUT.md.
 
 Exhibit hardware: M4 Mac mini, 16 GB. Local transcription is deferred at user request. Keep online Google recognition plus WebRTC VAD silence detection, bounded captures, confirmation and target locking. Future hardening may revisit a warm local model after native Mac accuracy/latency testing.
+
+Single-click holds now require 2 seconds with teal cursor-ring progress. Preserve position calibration and root snapping. The optional pinch rule emits explicit open-pinch release; short uncertain classifications pause progress, tracking loss clears it. Paused voice retries accept a fresh hold on the locked target without requiring a tray exit.

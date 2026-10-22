@@ -252,6 +252,7 @@ class GardenApp:
         self.hand = None
         self.hand_cursor = None
         self.hand_hover = None
+        self.hand_confirm_until = 0.
         self.hand_click = getattr(args, "hand_click", False)
         self.hand_gate = None
         self.probe_map = None
@@ -358,16 +359,23 @@ class GardenApp:
             self.hand_cursor = (observation["x"],observation["y"]) if observation["state"] == "ok" else None
             plant = self.garden.snap_root(*self.hand_cursor, self.hand_hover) if self.hand_cursor else None
             self.hand_hover = plant.id if plant else None
-            event = self.hand_gate.update(observation, received, target_id=self.hand_hover)
+            flow = self.voice_flow
+            if flow is not None and flow.active and flow.phase != "error":
+                self.hand_gate.interrupt()
+                continue
+            retry = flow is not None and flow.phase == "error"
+            target = (self.selected or "voice-retry") if retry else self.hand_hover
+            event = self.hand_gate.update(observation, received, target_id=target)
             if event is not None:
                 intent = event
             if intent and (self.hand_cursor is None or observation["gesture"] != "click" or
-                           observation["score"] < self.hand_gate.score or intent["target_id"] != self.hand_hover):
+                           observation["score"] < self.hand_gate.score or intent["target_id"] != target):
                 intent = None
             if intent and intent["target_id"] is None and math.hypot((intent["x"]-observation["x"])*WORLD[0],
                                                                      (intent["y"]-observation["y"])*WORLD[1]) > 48:
                 intent = None
         if intent is not None:
+            self.hand_confirm_until = time.monotonic()+.4
             self.handle_hand_click(**intent)
 
     def handle_hand_intent(self, gesture, row, col):
@@ -657,11 +665,22 @@ class GardenApp:
                     if self.hand_click and hovered:
                         cursor = (hovered.x,hovered.y)
                     xy = (round(area.x+cursor[0]*area.width), round(area.y+cursor[1]*area.height))
-                    pg.draw.circle(surface, (255, 230, 80), xy, 13, 3)
+                    pg.draw.circle(surface, INK, xy, 19, 6)
+                    pg.draw.circle(surface, PAPER, xy, 17, 3)
+                    if self.hand_click:
+                        progress = 1. if time.monotonic() < self.hand_confirm_until else self.hand_gate.progress
+                        if progress > 0:
+                            points = [(xy[0]+17*math.cos(-math.pi/2+2*math.pi*progress*i/64),
+                                       xy[1]+17*math.sin(-math.pi/2+2*math.pi*progress*i/64)) for i in range(65)]
+                            pg.draw.lines(surface, (46, 202, 181), False, points, 5)
                     if self.hand_click:
                         label = "Cultivate this plant" if hovered else "Plant here" if self.garden.plantable(*cursor) else "Reserved edge"
                         if self.voice_flow is not None and self.voice_flow.active:
-                            label = "Voice target locked"
+                            label = "Hold pinch 2s to retry" if self.voice_flow.phase == "error" else "Voice target locked"
+                        elif self.hand_gate.latched:
+                            label = "Open pinch to rearm"
+                        elif self.hand_gate.progress > 0:
+                            label = "Hold pinch 2s"
                         self.badge(surface, label, (xy[0]+18, xy[1]-34), area.inflate(-8, -8))
                 fresh = self.hand.last_received is not None and time.monotonic()-self.hand.last_received < .5
                 status = self.hand.message if fresh else "Camera stream stopped - move outside tray after reconnect"
@@ -879,7 +898,7 @@ class GardenApp:
             elif self.pending:
                 self.label("New planting spot selected", x, 139)
             else:
-                self.panel_text("Point at a spot or plant, then pinch.", x, 139)
+                self.panel_text("Point, then hold pinch for 2 seconds.", x, 139)
             steps = [("Type", "type"), ("Words", "words"), ("Confirm", "confirm")]
             for i, (name, phase) in enumerate(steps):
                 rect = pg.Rect(x+i*100, 194, 94, 29)

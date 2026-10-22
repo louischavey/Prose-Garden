@@ -82,12 +82,13 @@ class VoiceTests(unittest.TestCase):
         app.draw()
         self.assertFalse(any(action in ("undo","read","stop") for _,action in app.buttons))
 
-    def test_invalid_word_count_and_three_errors_pause_then_pinch_retries(self):
+    def test_empty_words_and_three_errors_pause_then_pinch_retries(self):
         app=self.app
         app.handle_hand_click(.3,.6)
         self.say("fern")
-        self.say("one two three four five six")
+        self.say("   ")
         self.assertEqual(app.voice_flow.phase,"words")
+
         self.assertEqual(app.draft,"")
         for _ in range(2):
             ticket=self.listen()
@@ -99,6 +100,20 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(app.pending,(.3,.6))
         self.assertEqual(app.voice_flow.phase,"words")
 
+
+    def test_long_transcripts_keep_first_five_words_for_planting_and_cultivation(self):
+        app=self.app
+        app.handle_hand_click(.3,.6)
+        self.say("fern")
+        self.say("One, two three four five six seven")
+        plant=app.garden.plants[0]
+        self.assertEqual(plant.session.words,["One,","two","three","four","five"])
+        self.assertIn("Kept the first 5 words",app.status)
+        app.handle_hand_click(.3,.6,target_id=plant.id)
+        self.say("six seven eight nine ten eleven")
+        self.assertEqual(plant.session.words[-5:],["six","seven","eight","nine","ten"])
+        self.assertEqual(len(app.garden.history),2)
+        self.assertEqual(app.voice_flow.phase,"idle")
     def test_stale_transcript_cannot_write_to_changed_target(self):
         app=self.app
         app.handle_hand_click(.3,.6)

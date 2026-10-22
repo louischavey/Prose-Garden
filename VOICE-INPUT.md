@@ -21,7 +21,7 @@ Keep your working camera/profile/layout/mic flags. See EXHIBIT-RUN.md before imp
 
 1. Open pinch to rearm, point at empty ground or a nearby snapped root, then hold pinch for two seconds. The cursor fills teal.
 2. A new spot asks for flower, tree, or fern. Existing plants skip type selection.
-3. Wait for LISTENING and speak 1–5 words. Valid transcription automatically plants or cultivates the locked target and checkpoints it. No spoken or gesture confirmation is needed.
+3. Wait for LISTENING and speak 1–5 words. Transcription keeps the first five whitespace-separated words when a phrase is longer, preserving punctuation and without requesting a retry. Valid transcription automatically plants or cultivates the locked target and checkpoints it. No spoken or gesture confirmation is needed.
 4. The selected plant remains highlighted. Rearm and select another spot/plant for the next entry. Holds during type/word capture cannot redirect the contribution.
 
 All transcribed words in the thoughts phase are literal text, including confirm, retry and cancel. Cancel remains recognized during plant-type selection. There is no review/retry command phase after successful transcription.

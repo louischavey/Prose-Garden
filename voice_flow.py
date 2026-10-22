@@ -146,7 +146,9 @@ class VoiceFlow:
             self.failures=0
             self.schedule("words",delay=.7)
         elif self.phase=="words":
-            text=text.strip()
+            words=text.split()
+            truncated=len(words)>5
+            text=" ".join(words[:5])
             try:
                 tokenize(text)
             except ValueError as exc:
@@ -156,7 +158,10 @@ class VoiceFlow:
             self.app.caret=len(text)
             self.app.select_all=False
             self.failures=0
+            before=len(self.app.garden.history)
             self.submit()
+            if truncated and len(self.app.garden.history)>before:
+                self.app.status+=" Kept the first 5 words."
         return True
 
     def submit(self):

@@ -213,7 +213,7 @@ class Dictation:
                     if self.silence:
                         import webrtcvad
                         from speech_input import capture_speech
-                        pcm = capture_speech(stream, stop, seconds, webrtcvad.Vad(2))
+                        pcm = capture_speech(stream, stop, seconds, webrtcvad.Vad(1))
                         if pcm is None:
                             return
                         chunks.append(pcm)
@@ -233,7 +233,12 @@ class Dictation:
                 recognizer.operation_timeout = 15
                 if ticket != self.ticket:
                     return
-                text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2),language=self.language)
+                try:
+                    text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2),language=self.language)
+                except sr.UnknownValueError as exc:
+                    raise ValueError("Speech captured, but words were unclear. Speak closer to the microphone.") from exc
+                except sr.RequestError as exc:
+                    raise RuntimeError("Google transcription unavailable; check internet connection. " + str(exc)) from exc
                 outcome=("dictation",(ticket,text))
             except Exception as exc:
                 outcome=("dictation_error",(ticket,str(exc) or "Speech could not be understood."))
@@ -652,13 +657,6 @@ class GardenApp:
         if interactive:
             self.hits = hits
             if self.hand is not None:
-                rows, cols = self.hand_gate.rows, self.hand_gate.cols
-                for row in range(rows):
-                    for col in range(cols):
-                        rect = pg.Rect(round(area.x+col*area.width/cols), round(area.y+row*area.height/rows),
-                                       round(area.width/cols), round(area.height/rows))
-                        pg.draw.rect(surface, (240, 235, 195), rect, 1)
-                        surface.blit(self.ui.small.render(str(row*cols+col+1), True, INK), (rect.x+8, rect.y+8))
                 if self.hand_cursor is not None:
                     cursor = self.hand_cursor
                     hovered = next((p for p in self.garden.plants if p.id == self.hand_hover), None)

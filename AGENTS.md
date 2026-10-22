@@ -19,3 +19,5 @@ The user now needs keyboard-free exhibit input. `--voice-input` reuses the exist
 Exhibit hardware: M4 Mac mini, 16 GB. Local transcription is deferred at user request. Keep online Google recognition plus WebRTC VAD silence detection, bounded captures, confirmation and target locking. Future hardening may revisit a warm local model after native Mac accuracy/latency testing.
 
 Single-click holds now require 2 seconds with teal cursor-ring progress. Preserve position calibration and root snapping. The optional pinch rule emits explicit open-pinch release; short uncertain classifications pause progress, tracking loss clears it. Paused voice retries accept a fresh hold on the locked target without requiring a tray exit.
+
+Voice capture now allows 8 seconds to begin speaking, then the existing 4/7/4-second per-phase budget. WebRTC mode 1 and 1.4 seconds of trailing silence accommodate quieter speech and natural pauses. Preserve bounded retries; distinguish no-speech, unclear transcription, and network failures.

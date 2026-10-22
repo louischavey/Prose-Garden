@@ -56,6 +56,15 @@ def recover(checkpoint, initial=None):
     return checkpoint
 
 
+def fresh_session(checkpoint):
+    """Clear the visible garden for a manual launch, preserving previous accepted work."""
+    if checkpoint.exists():
+        archive = checkpoint.parent/"previous-sessions"
+        archive.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        checkpoint.replace(archive/f"{checkpoint.stem}-{stamp}.json")
+
+
 def stop_tree(child):
     if os.name == "nt":
         subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"],
@@ -108,6 +117,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", default="output/exhibit", help="Persistent save basename")
     parser.add_argument("--load", help="Import an existing garden only if the exhibit checkpoint does not exist")
+    parser.add_argument("--resume", action="store_true", help="Keep the previous garden instead of starting empty")
     args, forwarded = parser.parse_known_args()
     if any(value.split("=")[0] in ("--calibrate", "--legacy-hand-gestures", "--interaction") for value in forwarded):
         parser.error("Calibrate separately first; exhibit startup uses the saved setup and single-click voice flow")
@@ -120,6 +130,8 @@ def main():
                    "--output", str(base), "--load", str(checkpoint), *forwarded]
         # Global supervisor lock prevents accidental port/microphone competition.
         with single_instance(ROOT/"output/exhibit.lock"):
+            if not args.resume:
+                fresh_session(checkpoint)
             return supervise(command, checkpoint, ROOT/"output/logs", initial)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(1, f"Exhibit could not start: {exc}\n")

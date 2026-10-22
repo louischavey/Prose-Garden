@@ -9,13 +9,13 @@ From the project folder on Mac, after syncing source and updating dependencies:
 
 Voice input, experimental pinch, saved calibration and bounded crash retries are enabled automatically. Keep existing camera/profile/layout/mic flags, for example `--mic-device 2 --profile camera-profile.json`. Calibrate separately before starting; confirm the camera, tray and framing have not moved. Google transcription still needs internet. No local speech server is needed.
 
-The first run creates `output/exhibit.json`; future runs resume that same garden. To import your current accepted poems on the FIRST run:
+Each manual launch starts an empty garden. Previous accepted thoughts are archived under `output/previous-sessions/`. Automatic crash retries still recover the current run from `output/exhibit.json`. Add `--resume` to intentionally continue the previous garden. To import your current accepted poems on the FIRST run:
 
 ```sh
 .venv/bin/python run_exhibit.py --camera 0 --load output/YOUR-EXISTING-GARDEN.json
 ```
 
-An existing exhibit checkpoint always takes precedence over --load. Your import file is read only. For a separate new exhibit session choose `--output output/exhibit-session-2`; existing poems are not deleted. Check the displayed plants before opening the exhibit to visitors.
+With --resume, an existing exhibit checkpoint takes precedence over --load. Without --resume it is archived first. Your import file is read only. For a separate new exhibit session choose `--output output/exhibit-session-2`; existing poems are not deleted. Check the displayed plants before opening the exhibit to visitors.
 
 | Failure | Current behavior |
 | --- | --- |

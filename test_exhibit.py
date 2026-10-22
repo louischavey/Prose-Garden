@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 from garden import Garden
 from plant_poem import ROOT
-from run_exhibit import recover, single_instance, supervise
+from run_exhibit import recover, single_instance, supervise, fresh_session
 
 
 class ExhibitTests(unittest.TestCase):
@@ -38,6 +38,18 @@ class ExhibitTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 with single_instance(path): pass
         with single_instance(path): pass
+
+    def test_manual_restart_archives_previous_garden_and_starts_empty(self):
+        import json
+        garden=Garden(42)
+        garden.plant(.4,.6,"fern","previous thoughts")
+        self.checkpoint.write_text(json.dumps(garden.pack()),encoding="utf-8")
+        fresh_session(self.checkpoint)
+        recover(self.checkpoint)
+        self.assertEqual(Garden.load(self.checkpoint).plants,[])
+        saved=list((self.root/"previous-sessions").glob("*.json"))
+        self.assertEqual(len(saved),1)
+        self.assertEqual(Garden.load(saved[0]).pack(),garden.pack())
 
     def test_crash_restart_then_normal_exit_stops(self):
         children=[Mock(),Mock()]

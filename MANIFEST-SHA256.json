@@ -25,7 +25,7 @@
   "test_hand_input.py": "c3794f67ebba86b364e12075ae7a4f5ddfd706c086be6a619617d15da6afede7",
   "test_plant_poem.py": "e75d6ed5b9c72c276f08da058758b3bb794ad5d0703740e13a6357fe5794f8db",
   "VERIFICATION.md": "275e04eff03d27f1420e48b7a9b798f082fcd4086f0449d1023fa8e1a6a88905",
-  "AGENTS.md": "901df9711e21fe3caaf068842df0c3b0f6d8f932d13d04c4a00be0de9d07f1b4",
+  "AGENTS.md": "58618e009aa84d4ae47ebe10779a04223b3764c0794849b1c2884662fb720c8f",
   ".gitignore": "132b4d18c5ff41d6fb9e0de717dd309c98dceb85a8b19fd2f96c427ad77cf868",
   "CALIBRATION.md": "5e328e8b54102f36ad0a96f26561d4537bb9530cedd868d496dc05a17212fd96",
   "tape_calibration.py": "94301596a5bad0007fb328a2325d30e99e65ab0393f65204af3488dff6ed6ccb",
@@ -43,7 +43,7 @@
   "speech_input.py": "996107d2558a87283040bb5e0aaf36eab896e6fa097a56eb03f58797780b1081",
   "test_speech_input.py": "4b62f880582662497b16bc60a5ed375026fa7cfe39b26200fd1caa36aeeda825",
   ".gitattributes": "1d5d71dcc6ccd28ab46a335349ecc74742ca4b81f4fcad212f8d134f70f1f13e",
-  "run_exhibit.py": "42abb372319435e0512e87cefa9e6ae17e3c3666b41b0da1cc06199342da9563",
-  "test_exhibit.py": "35a39c60ccfda2f6a34718028af46a1deef1d634ff50ba346fbb3c0a06888d7a",
-  "EXHIBIT-RUN.md": "33e0251e82a50273bd8b2206105d45cada2071c29659949557d35352df07c204"
+  "run_exhibit.py": "0cb49de837080509db35b7a1a2151a4de0983eb033c806d60da92b26aba22bec",
+  "test_exhibit.py": "9383be5d6d86d90cd40331a734423faf5b37b54db7d5ef5ebae493e0fc0fcff5",
+  "EXHIBIT-RUN.md": "bed66bc136afac6ac0c8808af82cd047aafaee790c8a04be41bf92efceb6d985"
 }

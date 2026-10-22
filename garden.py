@@ -897,7 +897,7 @@ class GardenApp:
                 self.label("New planting spot selected", x, 139)
             else:
                 self.panel_text("Point, then hold pinch for 2 seconds.", x, 139)
-            steps = [("Type", "type"), ("Thoughts", "words")]
+            steps = [("Plant Type", "type"), ("Thoughts", "words")]
             for i, (name, phase) in enumerate(steps):
                 rect = pg.Rect(x+i*154, 194, 144, 29)
                 active = flow.phase == phase

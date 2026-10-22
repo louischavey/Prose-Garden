@@ -2,7 +2,9 @@
 
 This Git checkout is the current project. Pull committed updates on the display Mac from the same repository; retain its local virtual environment, camera profile, and saved poems. Stop Poetree before updating its source. The Windows editing location is `C:/Users/HP/art_practice/poetree-camera-transfer/poetree-camera`. Earlier zip-transfer instructions below also apply to a fresh checkout.
 
-If position works but fist/palm recognition is finicky, see **GESTURE-TEST.md**. `camera_stream.py --confirm-setup --gesture-test` compares five poses without changing calibration or sending garden actions. The launcher supports `--plant-pose` and `--cultivate-pose` to use a tested alternative pair; defaults stay unchanged.
+The current default is **one model-based click with root snapping**. Thumb_Up is the click pose; it cultivates a nearby highlighted root or selects a new location on empty ground. Use `--click-pose` for another supported model label. The bundled model has no pinch label, and custom landmark classifiers have been removed. See **GESTURE-TEST.md** for current interaction and measurements. Your position anchor/calibration remain unchanged.
+
+Optional simultaneous comparison: add `--enable-pinch` to your usual launcher command to accept an experimental thumb/index pinch rule OR the model's thumbs-up as the same click. The rule is explicitly labeled and does not change position/calibration or snapping. It needs physical testing; see GESTURE-TEST.md. The previous two-pose landmark classifier is not restored.
 
 Use Python **3.12**, macOS 11+ (Apple Silicon or Intel) or 64-bit Windows. Create the environment on that computer. The archive includes source, tests, grass asset, and the gesture model; it excludes old poems and machine-specific profiles.
 
@@ -20,7 +22,7 @@ Allow camera access for Terminal/Python when macOS asks. Close other apps using 
 
 Press **A** in the calibration preview to detect four white tape patches at the tray corners, or click **top-left, top-right, bottom-right, bottom-left** manually. Inspect the numbered sections, then press Enter to accept. B limits tape search to a selected box; M shows the mask; +/- adjusts tape brightness; R resets for manual clicks; Q cancels. See **CALIBRATION.md** for placement and the full walkthrough. Use `--rows 2 --cols 2` for four sections (default is six in 2x3). This build assumes equal rectangular sections. Do not substitute an unrelated grid for the real layout.
 
-Frame some visible space **outside the tray** so a hand remains detectable while leaving it. A completely invisible hand does not rearm (it could be tracking loss). Alternatively show a confidently recognized non-command pose. Allow one visitor at a time. Once all four/six plots have plants, subsequent visitors cultivate them; there is no unlimited new-plant capacity in this camera layout.
+Frame some visible space **outside the tray** so a hand remains detectable while leaving it. A completely invisible hand does not rearm (it could be tracking loss). Alternatively show a confidently recognized non-click pose. Allow one visitor at a time. The six-section overlay is a visual reference; click mode supports multiple roots in a section, subject to existing spacing/plant-count limits.
 
 Later, if camera/tray/layout have stayed exactly in place:
 
@@ -30,7 +32,7 @@ Later, if camera/tray/layout have stayed exactly in place:
 
 Recalibrate after moving or swapping camera, moving tray, or changing framing. Windows profiles are deliberately not packaged. The display Mac needs its own calibration if it captures the camera.
 
-One visitor at a time: move a visible hand outside the tray to arm, then hold fist over an empty section for 0.6 seconds to select planting, or open palm over an occupied section to select cultivation. Then **choose type, type 1–5 words and press Enter/Water**. Gestures select; they do not submit words. Move outside the tray before another action. Optional Mic creates an editable online dictation draft; keyboard works offline. Escape clears an abandoned draft. Accepted Water/Undo actions automatically checkpoint JSON in camera mode. Close the garden window normally to also export PNG. Save output is in `output/`.
+One visitor at a time: move a visible hand outside the tray to arm, point at a root or empty ground, then hold thumbs-up for 0.6 seconds to click. The snapped root is highlighted and labeled Cultivate this plant; empty ground says Plant here. Then **choose type for a new plant, type 1–5 words and press Enter/Water**. A click selects; it never submits words. Release/rearm before another click. Optional Mic creates an editable online dictation draft; keyboard works offline. Escape clears an abandoned draft. Accepted Water/Undo actions automatically checkpoint JSON in camera mode. Close the garden window normally to also export PNG. Save output is in `output/`.
 
 ## Windows: same code
 
@@ -61,7 +63,7 @@ Use `--confirm-setup` for an unchanged sender setup. If using four sections, pas
 
 ## Test without a webcam
 
-Launch `garden.py --hand-stream` in one terminal and `demo_hand_stream.py` in another using your virtualenv Python. In the simulation window, point at a numbered section, release keys briefly, then hold F (fist) or P (palm). Switch to the garden window to type and submit words. Only the focused simulator sends actionable poses.
+Launch `garden.py --hand-stream` in one terminal and `demo_hand_stream.py` in another using your virtualenv Python. In the simulation window, point with the mouse, release keys briefly, then hold Space/F to click. Switch to the garden window to type and submit words. Only the focused simulator sends actionable poses.
 
 ```sh
 .venv/bin/python -m unittest -v
@@ -73,7 +75,7 @@ This checks software flow; camera recognition and calibration need the real came
 
 - No stream: check host/port/firewall and matching layouts. Sender messages say where it is streaming. Keep clock synchronization enabled for LAN streaming.
 - Camera missing/permission denied: choose another index, grant OS camera permission, restart capture, and recalibrate. Do not assume USB index identifies the same physical device across reboots.
-- Palm/fist not recognized overhead: test orientation/lighting first; inspect preview state and score. Hold one visible hand; remove the other hand from view. This release needs physical validation and is not certified unattended.
+- Click pose not recognized: test orientation/lighting first; inspect the model label and score, then choose a supported alternative with --click-pose if necessary. Keep one visible hand. This release needs physical validation and is not certified unattended.
 - Selected plant won't change: submit the existing draft or Escape to discard it. Multiple roots in a section need mouse selection. Mouse controls remain available.
 - Resume saved work with `--load output/garden-....json` on the launcher (or garden.py in receiver-only mode). Load does not restore camera calibration.
 - On exit, close the garden normally to save accepted text; a forced kill cannot save an unfinished draft.

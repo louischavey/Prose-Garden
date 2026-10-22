@@ -1,7 +1,7 @@
 """Camera-free hand sender. Run beside garden.py --hand-stream.
 
-Select a section by moving the mouse in this numbered mock tray.
-Hold F for fist or P for palm; release keys for neutral. Q exits.
+Move mouse as the cursor. Hold Space/F for a click; release keys for neutral.
+Q exits. --legacy uses F=fist and P=palm for the old two-gesture receiver.
 This tests transport and interaction, not actual hand detection/calibration.
 """
 import argparse
@@ -18,10 +18,11 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--rows", type=int, default=2)
     parser.add_argument("--cols", type=int, default=3)
+    parser.add_argument("--legacy", action="store_true")
     args = parser.parse_args()
     pg.init()
     screen = pg.display.set_mode((720, 480))
-    pg.display.set_caption("SIMULATED hands: mouse selects; hold F fist / P palm; Q quits")
+    pg.display.set_caption("SIMULATED hands: mouse cursor; Space/F click; release to rearm; Q quits")
     font, clock = pg.font.Font(None, 30), pg.time.Clock()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     session, seq = uuid.uuid4().hex, 0
@@ -33,7 +34,10 @@ def main():
                     running = False
             keys = pg.key.get_pressed()
             focused = pg.key.get_focused()
-            gesture = "closed_fist" if focused and keys[pg.K_f] else "open_palm" if focused and keys[pg.K_p] else "unknown"
+            if args.legacy:
+                gesture = "closed_fist" if focused and keys[pg.K_f] else "open_palm" if focused and keys[pg.K_p] else "unknown"
+            else:
+                gesture = "click" if focused and (keys[pg.K_f] or keys[pg.K_SPACE]) else "unknown"
             x, y = pg.mouse.get_pos()
             seq += 1
             data = {"version": 1, "session": session, "calibration": "simulation", "seq": seq,

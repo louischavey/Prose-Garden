@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def main():
-    from gesture_trials import POSES
+    from gesture_trials import pose_configuration
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--camera", type=int, default=0)
     parser.add_argument("--rows", type=int, default=2)
@@ -19,21 +19,36 @@ def main():
     parser.add_argument("--profile", default="camera-profile.json")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--load", help="Saved garden path relative to project folder")
-    parser.add_argument("--plant-pose", choices=POSES, default="Closed_Fist")
-    parser.add_argument("--cultivate-pose", choices=POSES, default="Open_Palm")
+    parser.add_argument("--gesture-source", choices=("model",), default="model")
+    parser.add_argument("--interaction", choices=("click", "legacy"), default="click")
+    parser.add_argument("--click-pose", choices=("Closed_Fist","Open_Palm","Victory","Pointing_Up","Thumb_Up"), default="Thumb_Up")
+    parser.add_argument("--enable-pinch", action="store_true", help="Also accept experimental pinch rule as the same click")
+    parser.add_argument("--plant-pose")
+    parser.add_argument("--cultivate-pose")
     args = parser.parse_args()
     if not args.calibrate and not args.confirm_setup:
         parser.error("Use --calibrate for a new setup or --confirm-setup for an unchanged setup")
-    if args.plant_pose == args.cultivate_pose:
-        parser.error("Plant and cultivate poses must differ")
+    if args.enable_pinch and args.interaction != "click":
+        parser.error("--enable-pinch requires single-click interaction")
+    try:
+        _, args.plant_pose, args.cultivate_pose = pose_configuration(args.gesture_source, args.plant_pose, args.cultivate_pose)
+    except ValueError as exc:
+        parser.error(str(exc))
     garden_args = [sys.executable, str(ROOT/"garden.py"), "--hand-stream", "--gallery-mode",
                    "--hand-rows", str(args.rows), "--hand-cols", str(args.cols), "--hand-port", str(args.port)]
     if args.load:
         garden_args += ["--load", args.load]
+    if args.interaction == "click":
+        garden_args += ["--hand-click"]
+    else:
+        garden_args += ["--legacy-hand-gestures"]
     camera_args = [sys.executable, str(ROOT/"camera_stream.py"), "--camera", str(args.camera),
                    "--rows", str(args.rows), "--cols", str(args.cols), "--port", str(args.port),
                    "--profile", str(ROOT/args.profile), "--calibrate" if args.calibrate else "--confirm-setup",
-                   "--plant-pose", args.plant_pose, "--cultivate-pose", args.cultivate_pose]
+                   "--plant-pose", args.plant_pose, "--cultivate-pose", args.cultivate_pose,
+                   "--gesture-source", args.gesture_source, "--interaction", args.interaction, "--click-pose", args.click_pose]
+    if args.enable_pinch:
+        camera_args += ["--enable-pinch"]
     # Camera calibration happens while the garden is already visible.
     garden = subprocess.Popen(garden_args, cwd=ROOT)
     camera = None

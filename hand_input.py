@@ -5,7 +5,7 @@ import socket
 import time
 
 VERSION = 1
-GESTURES = {"closed_fist", "open_palm", "unknown"}
+GESTURES = {"closed_fist", "open_palm", "unknown", "click"}
 STATES = {"ok", "no_hand", "ambiguous", "outside", "uncalibrated"}
 
 
@@ -79,10 +79,12 @@ class HandReceiver:
                 if data["state"] == "ok":
                     # Only display known model labels from an optional newer sender.
                     raw_pose = data.get("raw_pose")
-                    if raw_pose not in ("Closed_Fist", "Open_Palm", "Victory", "Pointing_Up", "Thumb_Up", "Thumb_Down", "ILoveYou", "None"):
+                    if raw_pose not in ("Closed_Fist", "Open_Palm", "Victory", "Pointing_Up", "Thumb_Up", "Thumb_Down", "ILoveYou", "Pinch", "None"):
                         raw_pose = data["gesture"]
                     pose = "pose unclear" if data["score"] < .7 else raw_pose
                     self.message = f"Position OK | {pose} {data['score']:.2f}"
+                    if data.get("click_source") == "pinch_rule":
+                        self.message += " (pinch rule)"
                 elif data.get("reason") == "palm_outside":
                     self.message = "Hand outside mapped tray - check palm-center ring in camera"
                 elif data.get("reason") == "multiple_hands":
@@ -156,4 +158,39 @@ class IntentGate:
             self.latched = True
             self.candidate = self.since = None
             return candidate
+        return None
+
+
+class ClickGate(IntentGate):
+    """One model gesture clicks either a stable nearby root or empty ground."""
+    def update(self, data, now=None, target_id=None):
+        now = time.monotonic() if now is None else now
+        identity = (data["session"], data["calibration"])
+        if identity != self.identity or (self.last_time is not None and now-self.last_time > .5):
+            self.interrupt()
+            self.identity = identity
+        self.last_time = now
+        neutral = data["state"] == "outside" or (data["state"] == "ok" and data["gesture"] == "unknown" and data["score"] >= self.score)
+        if neutral:
+            self.candidate = self.since = None
+            if self.release_since is None:
+                self.release_since = now
+            if now-self.release_since >= self.release:
+                self.latched = False
+            return None
+        self.release_since = None
+        if self.latched or data["state"] != "ok" or data["gesture"] != "click" or data["score"] < self.score:
+            self.candidate = self.since = None
+            return None
+        point = (data["x"], data["y"])
+        changed = self.candidate is None or self.candidate[0] != target_id
+        if not changed and target_id is None:
+            changed = math.hypot((point[0]-self.candidate[1][0])*1200,
+                                 (point[1]-self.candidate[1][1])*800) > 48
+        if changed:
+            self.candidate, self.since = (target_id, point), now
+        if now-self.since >= self.hold:
+            self.latched = True
+            self.candidate = self.since = None
+            return dict(x=point[0], y=point[1], target_id=target_id)
         return None

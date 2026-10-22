@@ -16,6 +16,33 @@ def sample(label="Victory", state="ok", score=.99):
 
 
 class GestureTrialTests(unittest.TestCase):
+    def test_zero_action_score_distinguishes_position_from_recognition_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trials = GestureTrials(Path(directory)/"report.json")
+            trials.start(2, 0)
+            trials.update(sample(state="outside"), 3.)
+            report = trials.update(sample(), 8.)
+            self.assertEqual(report["match_percent"], 0)
+            self.assertEqual(report["requested_pose_at_threshold_any_position_percent"], 100)
+            self.assertEqual(report["position_ok_percent"], 0)
+            self.assertEqual(report["raw_label_counts"], {"Victory":1})
+            self.assertIn("position/processing gates", report["diagnosis"])
+            trials.start(2, 10)
+            trials.update(sample(label="None", score=.9), 13.)
+            report = trials.update(sample(), 18.)
+            self.assertEqual(report["position_ok_percent"], 100)
+            self.assertIn("never named", report["diagnosis"])
+            trials.start(2, 20)
+            trials.update(sample(score=.4), 23.)
+            report = trials.update(sample(), 28.)
+            self.assertEqual(report["requested_label_percent"], 100)
+            self.assertEqual(report["max_score_when_requested_label_is_top"], .4)
+            self.assertIn("never reached 0.70", report["diagnosis"])
+            trials.start(2, 30)
+            trials.update(sample(state="ambiguous"), 33.)
+            report = trials.update(sample(), 38.)
+            self.assertIn("position/processing gates", report["diagnosis"])
+
     def test_pose_mapping_does_not_change_anchor_or_position(self):
         landmarks = [SimpleNamespace(x=.2+i*.01, y=.3+i*.007) for i in range(21)]
         matrix = np.array([[1.2,0,-.1],[0,1.1,-.1],[0,0,1.]])

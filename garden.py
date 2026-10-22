@@ -64,6 +64,19 @@ class Garden:
         distance, plant = min(candidates, key=lambda item: item[0], default=(math.inf, None))
         return plant if distance < ROOT_CUSHION else None
 
+    def snap_root(self, x, y, current_id=None, radius=70):
+        """Nearby root selection with hysteresis; never uses overlapping foliage."""
+        self.position(x,y)
+        distances = sorted(((math.hypot((x-p.x)*WORLD[0], (y-p.y)*WORLD[1]), p)
+                            for p in self.plants), key=lambda item: (item[0], item[1].id))
+        if not distances:
+            return None
+        distance, nearest = distances[0]
+        current = next(((d,p) for d,p in distances if p.id == current_id), None)
+        if current and current[0] <= radius*1.3 and (distance > radius or distance+15 >= current[0]):
+            return current[1]
+        return nearest if distance <= radius else None
+
     def plant(self, x, y, kind, text, allow_edge=False):
         self.position(x, y)
         if not allow_edge and not self.plantable(x, y):
@@ -220,6 +233,8 @@ class GardenApp:
         self.dirt = None
         self.hand = None
         self.hand_cursor = None
+        self.hand_hover = None
+        self.hand_click = getattr(args, "hand_click", False)
         self.hand_gate = None
         self.probe_map = None
         self.dirt_cell = None
@@ -269,10 +284,65 @@ class GardenApp:
             from dirt_input import SerialInput
             self.dirt = SerialInput(args.serial_port)
         if getattr(args, "hand_stream", False):
-            from hand_input import HandReceiver, IntentGate
-            self.hand_gate = IntentGate(getattr(args, "hand_rows", 2), getattr(args, "hand_cols", 3))
+            from hand_input import HandReceiver, IntentGate, ClickGate
+            gate_type = ClickGate if self.hand_click else IntentGate
+            self.hand_gate = gate_type(getattr(args, "hand_rows", 2), getattr(args, "hand_cols", 3))
             self.hand = HandReceiver(getattr(args, "hand_host", "127.0.0.1"), getattr(args, "hand_port", 8765))
             self.status = "Camera mode: one visitor. Exit tray to arm. Gesture mappings are shown in camera preview/Terminal."
+
+    def handle_hand_click(self, x, y, target_id=None):
+        """Same click cultivates a snapped root or previews free-position planting."""
+        if self.finished:
+            return
+        if self.draft.strip() or self.dictation.busy:
+            self.status = "Submit this draft or Escape to clear it before choosing another spot."
+            return
+        self.garden.position(x,y)
+        plant = next((p for p in self.garden.plants if p.id == target_id), None)
+        if target_id is not None and plant is None:
+            self.status = "Target changed. Point again before clicking."
+            return
+        self.selected = self.pending = None
+        self.focus = False
+        if plant is None and not self.garden.plantable(x,y):
+            self.status = "Choose empty ground inside the pale planting border."
+            return
+        self.speech.stop()
+        self.dictation.cancel()
+        self.selected = plant.id if plant else None
+        self.pending = None if plant else (x,y)
+        self.focus, self.zoom, self.pan, self.scroll = False, 1, [0,0], 0
+        self.status = "Cultivate selected plant: enter 1-5 words, then Enter/Water." if plant else "New planting spot: choose type, enter 1-5 words, then Enter/Water."
+
+    def poll_hand_click(self):
+        data = self.hand.poll()
+        if data is None:
+            if self.hand.last_received is None or time.monotonic()-self.hand.last_received > .5:
+                self.hand_cursor = self.hand_hover = None
+                self.hand_gate.interrupt()
+            return
+        intent = None
+        for received, observation in self.hand.batch:
+            if (observation.get("rows"), observation.get("cols")) != (self.hand_gate.rows,self.hand_gate.cols):
+                self.hand_cursor = self.hand_hover = None
+                self.hand_gate.interrupt()
+                self.hand.message = "Camera layout mismatch; commands stopped"
+                intent = None
+                continue
+            self.hand_cursor = (observation["x"],observation["y"]) if observation["state"] == "ok" else None
+            plant = self.garden.snap_root(*self.hand_cursor, self.hand_hover) if self.hand_cursor else None
+            self.hand_hover = plant.id if plant else None
+            event = self.hand_gate.update(observation, received, target_id=self.hand_hover)
+            if event is not None:
+                intent = event
+            if intent and (self.hand_cursor is None or observation["gesture"] != "click" or
+                           observation["score"] < self.hand_gate.score or intent["target_id"] != self.hand_hover):
+                intent = None
+            if intent and intent["target_id"] is None and math.hypot((intent["x"]-observation["x"])*WORLD[0],
+                                                                     (intent["y"]-observation["y"])*WORLD[1]) > 48:
+                intent = None
+        if intent is not None:
+            self.handle_hand_click(**intent)
 
     def handle_hand_intent(self, gesture, row, col):
         """Camera sections own roots; foliage never steals another section's input."""
@@ -315,6 +385,9 @@ class GardenApp:
 
     def poll_hand(self):
         if self.hand is None:
+            return
+        if self.hand_click:
+            self.poll_hand_click()
             return
         data = self.hand.poll()
         if data is None:
@@ -534,8 +607,15 @@ class GardenApp:
                         pg.draw.rect(surface, (240, 235, 195), rect, 1)
                         surface.blit(self.ui.small.render(str(row*cols+col+1), True, INK), (rect.x+8, rect.y+8))
                 if self.hand_cursor is not None:
-                    xy = (round(area.x+self.hand_cursor[0]*area.width), round(area.y+self.hand_cursor[1]*area.height))
+                    cursor = self.hand_cursor
+                    hovered = next((p for p in self.garden.plants if p.id == self.hand_hover), None)
+                    if self.hand_click and hovered:
+                        cursor = (hovered.x,hovered.y)
+                    xy = (round(area.x+cursor[0]*area.width), round(area.y+cursor[1]*area.height))
                     pg.draw.circle(surface, (255, 230, 80), xy, 13, 3)
+                    if self.hand_click:
+                        label = "Cultivate this plant" if hovered else "Plant here" if self.garden.plantable(*cursor) else "Reserved edge"
+                        surface.blit(self.ui.small.render(label, True, PAPER), (max(area.x,min(xy[0]+18,area.right-180)), max(area.y,xy[1]-22)))
                 fresh = self.hand.last_received is not None and time.monotonic()-self.hand.last_received < .5
                 status = self.hand.message if fresh else "Camera stream stopped - move outside tray after reconnect"
                 surface.blit(self.ui.small.render(status, True, INK), (area.x+8, area.bottom-28))
@@ -897,6 +977,8 @@ def main():
     parser.add_argument("--voice", default="en-US-AriaNeural")
     parser.add_argument("--serial-port", help="auto, or Metro USB port such as COM6 or /dev/cu.usbmodem...")
     parser.add_argument("--hand-stream", action="store_true", help="Receive normalized hand+gesture UDP packets")
+    parser.add_argument("--hand-click", action="store_true", default=True, help="Default: one click gesture; snap to nearby roots or plant at cursor")
+    parser.add_argument("--legacy-hand-gestures", dest="hand_click", action="store_false", help="Compatibility only: old two-gesture section selection")
     parser.add_argument("--hand-host", default="127.0.0.1", help="Bind address; use 0.0.0.0 only on trusted LAN")
     parser.add_argument("--hand-port", type=int, default=8765)
     parser.add_argument("--hand-rows", type=int, default=2)

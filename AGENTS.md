@@ -9,3 +9,7 @@ Edit and verify files here. Earlier code in `C:/Users/HP/art_practice/everything
 Preserve local modifications, accepted poems, output, virtual environments, and camera profiles. Inspect git status before editing. Do not commit or push unless requested.
 
 Read CAMERA-START.md and CALIBRATION.md for the current runtime flow. CAMERA_PLAN.md documents integration with the existing garden. Run `python -m unittest -v` with the project dependencies installed, from this directory. Report physical camera / native Mac validation separately from synthetic tests.
+
+Current interaction is one model-based click with root snapping: Thumb_Up by default selects either a nearby existing root for cultivation or empty ground for planting. The bundled model does not recognize pinch. Custom geometric gesture rules have been retired at the user's request; do not reintroduce custom models/rules as a claimed pretrained pinch detector. Preserve the working position anchor/calibration.
+
+Latest user exception: they explicitly authorized testing the existing pinch rule alongside the model click. `--enable-pinch` adds an optional thumb/index-distance rule as a second source of the SAME click; this is not a pretrained pinch model and must be labeled experimental/rule-based. Default model-only operation, positioning, snapping, and the shared release latch remain unchanged.

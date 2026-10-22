@@ -1,6 +1,10 @@
 # Poetree camera stream: implementation and five-hour exhibit feasibility
 
+CURRENT FLOW: the default launcher now uses one bundled-model click (Thumb_Up), continuous cursor positioning, and nearby-root snapping. A click cultivates the highlighted root or previews a new root at the actual cursor on empty ground. Root snap radius is 70 WORLD units with a 1.3x release radius and 15-unit switching margin. New empty-ground holds reset if moving >48 WORLD units. This replaces the two-gesture/one-root-per-section assumptions below; the four-to-six-section overlay remains a visual reference, not an occupancy cap. Calibration and palm-anchor coordinates remain unchanged. The bundled model lacks pinch; custom landmark pose rules were removed. See CAMERA-START.md and GESTURE-TEST.md for current operation. Earlier sections/review references document previous iterations.
+
 ## 1. Scope and verified source context
+
+Latest optional test addition: `--enable-pinch` accepts an experimental tip-distance pinch rule alongside the model click, as explicitly requested by the user. Both sources use the same click/latch and snap target. The rule is not a pretrained model and is disabled by default; no changes to position or calibration. See GESTURE-TEST.md.
 Target: existing Python/Pygame garden.py in this folder. One visitor at a time puts a hand over one dirt tray divided into four to six sections. Fist requests planting; palm requests cultivation. Reuse the actual poem generator, editable draft, Water/Enter submission, speech, undo, and JSON/PNG saves. This document supersedes the earlier browser-based IMPLEMENTATION_PLAN.md in the chat workspace.
 
 GARDEN.md's Tap API and garden.py define normalized ground coordinates x,y in [0,1], measured across grass only, not the whole display. WORLD=(1200,800) is model/rendering scale. handle_garden_tap has no gesture argument and can select word sprites. handle_dirt_tap selects root ownership but assumes a legacy 4x6 probe grid. Camera mode must bypass that sensor grid and foliage hit-testing. The underlying Garden.plant and Garden.water_plant are unchanged.

@@ -52,9 +52,12 @@ def map_point(matrix, x, y):
     return float(mapped[0]/mapped[2]), float(mapped[1]/mapped[2])
 
 
-def hand_observation(result, matrix, elapsed=0., plant_pose="Closed_Fist", cultivate_pose="Open_Palm"):
+def hand_observation(result, matrix, elapsed=0., plant_pose="Closed_Fist", cultivate_pose="Open_Palm",
+                     gesture_source="model", aspect=.75):
     """Keep valid position independent of pose confidence; intent gate checks pose."""
     import numpy as np
+    if gesture_source != "model":
+        raise ValueError("Custom landmark gesture rules have been retired; use model")
     observation = dict(state="no_hand", gesture="unknown", score=0., point=None,
                        anchor=None, mapped=None, reason="no_hand", raw_pose="None")
     if len(result.hand_landmarks) > 1:
@@ -189,7 +192,7 @@ def calibrate(cap, args):
 
 
 def main():
-    from gesture_trials import POSES, GestureTrials, default_report
+    from gesture_trials import pose_configuration, GestureTrials, default_report
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--camera", type=int, default=0, help="Camera index; use 1/2 for a USB webcam")
     parser.add_argument("--host", default="127.0.0.1", help="Garden receiver host; localhost by default")
@@ -203,15 +206,25 @@ def main():
     parser.add_argument("--confirm-setup", action="store_true", help="Confirm saved calibration still matches camera/tray placement")
     parser.add_argument("--no-preview", action="store_true")
     parser.add_argument("--gesture-test", action="store_true", help="Timed comparison of candidate poses; sends NO garden packets")
-    parser.add_argument("--plant-pose", choices=POSES, default="Closed_Fist")
-    parser.add_argument("--cultivate-pose", choices=POSES, default="Open_Palm")
+    parser.add_argument("--gesture-source", choices=("model",), default="model")
+    parser.add_argument("--interaction", choices=("click", "legacy"), default="click")
+    parser.add_argument("--click-pose", choices=("Closed_Fist","Open_Palm","Victory","Pointing_Up","Thumb_Up"), default="Thumb_Up")
+    parser.add_argument("--enable-pinch", action="store_true", help="Also accept experimental landmark-distance pinch as the same click")
+    parser.add_argument("--plant-pose")
+    parser.add_argument("--cultivate-pose")
     args = parser.parse_args()
     if args.download_model:
         download_model(args.model)
         print(f"Model saved: {args.model}")
         return
-    if args.plant_pose == args.cultivate_pose:
-        parser.error("Plant and cultivate poses must differ")
+    try:
+        pose_choices, args.plant_pose, args.cultivate_pose = pose_configuration(args.gesture_source, args.plant_pose, args.cultivate_pose)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.enable_pinch and args.interaction != "click":
+        parser.error("--enable-pinch requires single-click interaction")
+    if args.enable_pinch:
+        pose_choices = (*pose_choices,"Pinch")
     if args.gesture_test and (args.no_preview or args.calibrate):
         parser.error("Gesture test uses the existing profile: --confirm-setup --gesture-test, with preview enabled")
     from hand_input import IntentGate
@@ -229,13 +242,14 @@ def main():
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     session, seq = uuid.uuid4().hex, 0
-    def send(state, gesture="unknown", score=0., point=None, reason="", raw_pose="None"):
+    def send(state, gesture="unknown", score=0., point=None, reason="", raw_pose="None", click_source="model"):
         nonlocal seq
         seq += 1
         message = {"version": 1, "session": session, "seq": seq, "sent_at": time.time(),
                    "calibration": profile["id"], "rows": args.rows, "cols": args.cols,
                    "state": state, "x": point[0] if point else None, "y": point[1] if point else None,
-                   "gesture": gesture, "score": float(score), "reason": reason, "raw_pose": raw_pose}
+                   "gesture": gesture, "score": float(score), "reason": reason, "raw_pose": raw_pose,
+                   "click_source":click_source}
         sock.sendto(json.dumps(message, allow_nan=False).encode(), (args.host, args.port))
         return message
     try:
@@ -245,14 +259,18 @@ def main():
         if profile.get("version") != 1 or profile.get("camera") != args.camera or (profile.get("rows"), profile.get("cols")) != (args.rows, args.cols):
             raise ValueError("Camera/layout differs from saved profile; use --calibrate")
         matrix = transform_from_corners(profile["corners"], profile["width"], profile["height"])
-        trials = GestureTrials(default_report(ROOT), dict(camera=args.camera, calibration=profile["id"])) if args.gesture_test else None
+        trials = GestureTrials(default_report(ROOT), dict(camera=args.camera, calibration=profile["id"],
+                               gesture_source=args.gesture_source, pinch_rule_enabled=args.enable_pinch), poses=pose_choices) if args.gesture_test else None
         options = mp.tasks.vision.GestureRecognizerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=str(args.model)),
             running_mode=mp.tasks.vision.RunningMode.VIDEO, num_hands=2)
         if trials:
-            print(f"GESTURE TEST: no garden actions sent. Press 1-5 for trials; report: {trials.path}")
+            print(f"GESTURE TEST: no garden actions sent. Press 1-{len(pose_choices)} for trials; report: {trials.path}")
         else:
-            print(f"Streaming to {args.host}:{args.port}. Plant={args.plant_pose}; cultivate={args.cultivate_pose}. Exit tray to arm; Q quits.")
+            action = f"Click={args.click_pose}; nearest root cultivates, empty ground plants" if args.interaction == "click" else f"Plant={args.plant_pose}; cultivate={args.cultivate_pose}"
+            if args.enable_pinch:
+                action += " | OR Pinch (experimental landmark rule)"
+            print(f"Streaming to {args.host}:{args.port}. {action}. Exit tray to arm; Q quits.")
         previous_ms = -1
         with mp.tasks.vision.GestureRecognizer.create_from_options(options) as recognizer:
             while True:
@@ -271,7 +289,17 @@ def main():
                 previous_ms = stamp
                 result = recognizer.recognize_for_video(mp.Image(image_format=mp.ImageFormat.SRGB,
                     data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)), stamp)
-                observation = hand_observation(result, matrix, time.monotonic()-start, args.plant_pose, args.cultivate_pose)
+                observation = hand_observation(result, matrix, time.monotonic()-start, args.plant_pose, args.cultivate_pose,
+                                               args.gesture_source, height/width)
+                if args.interaction == "click":
+                    observation["gesture"] = "click" if observation["raw_pose"] == args.click_pose else "unknown"
+                    if observation["state"] == "ok":
+                        observation["reason"] = "gesture_uncertain" if observation["score"] < .7 else "ready_pose" if observation["gesture"] == "click" else "gesture_not_command"
+                if args.enable_pinch and len(result.hand_landmarks) == 1:
+                    from pinch_click import with_pinch_click
+                    world = getattr(result,"hand_world_landmarks",[])
+                    observation = with_pinch_click(observation,result.hand_landmarks[0],
+                        world[0] if len(world) == 1 else None,height/width)
                 state, gesture, score, point = (observation[k] for k in ("state", "gesture", "score", "point"))
                 for landmarks in result.hand_landmarks:
                     for lm in landmarks:
@@ -279,7 +307,7 @@ def main():
                 if trials:
                     trials.update(observation, time.monotonic())
                 else:
-                    send(state, gesture, score, point, observation["reason"], observation["raw_pose"])
+                    send(state, gesture, score, point, observation["reason"], observation["raw_pose"],observation.get("click_source","model"))
                 if not args.no_preview:
                     inverse = np.linalg.inv(matrix)
                     for r in range(args.rows):
@@ -297,6 +325,10 @@ def main():
                     mapped = observation["mapped"]
                     position = f" x={mapped[0]:.2f} y={mapped[1]:.2f}" if mapped else ""
                     label = f"POSITION {state}{position} | {observation['raw_pose']} {score:.2f}"
+                    if observation.get("click_source") == "pinch_rule":
+                        label += " RULE"
+                    if args.enable_pinch and "pinch_ratio" in observation:
+                        label += f" gap={observation['pinch_ratio']:.2f}"
                     help_text = {"palm_outside": "Palm-center ring is outside tray. Move lower/inside; check calibration.",
                                  "multiple_hands": "Two hands visible: remove the other hand from camera view.",
                                  "gesture_uncertain": "Position tracked; pose unclear. Commands still require score >=0.70.",
@@ -306,16 +338,22 @@ def main():
                                  "ready_pose": "Position and pose detected. Exit tray to arm, then hold pose inside."}[observation["reason"]]
                     if not trials and observation["reason"] == "ready_pose":
                         help_text = "Plant="+args.plant_pose+" | Cultivate="+args.cultivate_pose+" | Exit tray to arm; hold inside."
+                    if not trials and args.interaction == "click" and state == "ok":
+                        poses = args.click_pose + (" OR Pinch rule" if args.enable_pinch else "")
+                        help_text = f"Click={poses}: hold 0.6s. Root cultivates; empty ground plants."
                     cv2.rectangle(frame, (0, 0), (width, 54), (20, 20, 20), -1)
                     cv2.putText(frame, label, (8, 20), 0, .44, (255, 255, 255), 1)
                     cv2.putText(frame, help_text, (8, 43), 0, .38, (255, 255, 255), 1)
                     if trials:
                         frame = cv2.copyMakeBorder(frame, 0, 65, 0, 0, cv2.BORDER_CONSTANT, value=(20,20,20))
-                        cv2.putText(frame, "TEST ONLY: 1 Fist | 2 Palm | 3 V sign | 4 Index | 5 Thumbs-up", (8, height+20), 0, .43, (255,255,255), 1)
+                        instructions = "TEST ONLY: 1 Fist | 2 Palm | 3 V sign | 4 Index | 5 Thumbs-up"
+                        if args.enable_pinch:
+                            instructions += " | 6 Pinch rule"
+                        cv2.putText(frame, instructions, (8, height+20), 0, .43, (255,255,255), 1)
                         cv2.putText(frame, trials.status(time.monotonic()), (8, height+44), 0, .43, (255,255,255), 1)
                     cv2.imshow("Poetree hand stream (unmirrored) - Q quits", frame)
                     key = cv2.waitKey(1) & 255
-                    if trials and ord('1') <= key <= ord('5'):
+                    if trials and ord('1') <= key < ord('1')+len(pose_choices):
                         trials.start(key-ord('1'), time.monotonic())
                     if key in (ord('q'), 27):
                         break

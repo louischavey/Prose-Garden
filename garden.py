@@ -177,13 +177,14 @@ class Garden:
 class Dictation:
     """One short recording; recognition never submits words automatically."""
 
-    def __init__(self, events, device=None, language="en-US"):
+    def __init__(self, events, device=None, language="en-US", backend="google", silence=False, whisper_port=8080):
         self.events = events
         self.busy = False
         self.stop_event = threading.Event()
         self.ticket = 0
         self.device=device
         self.language=language
+        self.backend, self.silence, self.whisper_port = backend, silence, whisper_port
 
     def cancel(self):
         self.ticket += 1
@@ -205,14 +206,24 @@ class Dictation:
                 import sounddevice as sd
                 import speech_recognition as sr
                 rate = int(sd.query_devices(self.device,kind="input")["default_samplerate"])
+                if self.silence or self.backend == "whispercpp":
+                    rate = 16000
                 chunks = []
                 with sd.RawInputStream(samplerate=rate, channels=1, dtype="int16",device=self.device) as stream:
-                    deadline = time.monotonic() + seconds
-                    while not stop.is_set() and time.monotonic() < deadline:
-                        chunk, overflow = stream.read(max(1, rate // 10))
-                        if overflow:
-                            raise RuntimeError("Microphone overflow. Please try again.")
-                        chunks.append(bytes(chunk))
+                    if self.silence:
+                        import webrtcvad
+                        from speech_input import capture_speech
+                        pcm = capture_speech(stream, stop, seconds, webrtcvad.Vad(2))
+                        if pcm is None:
+                            return
+                        chunks.append(pcm)
+                    else:
+                        deadline = time.monotonic() + seconds
+                        while not stop.is_set() and time.monotonic() < deadline:
+                            chunk, overflow = stream.read(max(1, rate // 10))
+                            if overflow:
+                                raise RuntimeError("Microphone overflow. Please try again.")
+                            chunks.append(bytes(chunk))
                 if ticket != self.ticket:
                     return
                 if not chunks:
@@ -220,7 +231,13 @@ class Dictation:
                 self.events.put(("dictating", ticket))
                 recognizer = sr.Recognizer()
                 recognizer.operation_timeout = 15
-                text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2),language=self.language)
+                if ticket != self.ticket:
+                    return
+                if self.backend == "whispercpp":
+                    from speech_input import local_transcribe
+                    text = local_transcribe(b"".join(chunks), rate, self.language, self.whisper_port)
+                else:
+                    text = recognizer.recognize_google(sr.AudioData(b"".join(chunks), rate, 2),language=self.language)
                 outcome=("dictation",(ticket,text))
             except Exception as exc:
                 outcome=("dictation_error",(ticket,str(exc) or "Speech could not be understood."))
@@ -264,7 +281,10 @@ class GardenApp:
         self.sprite_cache = {}
         self.events = queue.Queue()
         self.speech = Speech(self.events, args.voice)
-        self.dictation = Dictation(self.events,getattr(args,"mic_device",None),getattr(args,"speech_language","en-US"))
+        self.dictation = Dictation(self.events,getattr(args,"mic_device",None),getattr(args,"speech_language","en-US"),
+                                  backend=getattr(args,"speech_backend","google"),
+                                  silence=getattr(args,"voice_input",False),
+                                  whisper_port=getattr(args,"whisper_port",8080))
         from voice_flow import VoiceFlow
         self.voice_flow=VoiceFlow(self) if getattr(args,"voice_input",False) else None
         self.selected = None
@@ -617,21 +637,8 @@ class GardenApp:
                     pg.draw.rect(surface, HIGHLIGHT, dest.inflate(4, 4), 1, border_radius=3)
                 hits.append((dest, plant.id))
         # Root markers stay above foliage so a covered plant can still be reached.
-        if interactive and selected:
-            chosen = [rect for rect, pid in hits if pid == selected]
-            plant = self.garden.get(selected)
-            selection = pg.Rect(round(area.x+plant.x*area.width)-18,
-                                round(area.y+plant.y*area.height)-18, 36, 36)
-            for rect in chosen:
-                selection.union_ip(rect)
-            selection = selection.inflate(20, 20).clip(area.inflate(-8, -8))
-            pg.draw.rect(surface, INK, selection, 6, border_radius=10)
-            pg.draw.rect(surface, (255, 224, 105), selection, 3, border_radius=10)
         for plant in ordered:
             center = (round(area.x+plant.x*area.width), round(area.y+plant.y*area.height))
-            if interactive and plant.id == selected:
-                pg.draw.circle(surface, INK, center, 17)
-                pg.draw.circle(surface, (255, 224, 105), center, 14, 3)
             pg.draw.circle(surface, PAPER if plant.id == selected else (174, 191, 120), center, 7)
             pg.draw.circle(surface, INK, center, 7, 1)
         if interactive and self.pending:
@@ -901,7 +908,7 @@ class GardenApp:
             self.label("Say confirm to save; retry or cancel.", x, 400, font=pg.font.Font(None, 19))
             self.read_rect.top = 442
             self.read_rect.height = max(30, self.panel.bottom-64-self.read_rect.top)
-            self.label("Mic uses Google / internet required", x, 421, font=pg.font.Font(None, 17))
+            self.label("Mic stays on this Mac" if getattr(self.dictation,"backend","google") == "whispercpp" else "Mic uses Google / internet required", x, 421, font=pg.font.Font(None, 17))
         else:
             if self.selected:
                 plant = self.garden.get(self.selected)
@@ -1037,7 +1044,7 @@ class GardenApp:
             elif kind == "speech_error" and data[0] == self.speech.ticket:
                 self.status = str(data[1])
             elif kind == "dictating" and data == self.dictation.ticket:
-                self.status = "Transcribing online..."
+                self.status = "Transcribing locally..." if getattr(self.dictation,"backend","google") == "whispercpp" else "Transcribing online..."
             elif kind == "dictation" and data[0] == self.dictation.ticket:
                 if self.voice_flow is not None and self.voice_flow.receive(data[0],text=data[1]):
                     continue
@@ -1083,7 +1090,9 @@ def main():
     parser.add_argument("--voice", default="en-US-AriaNeural")
     parser.add_argument("--voice-input",action="store_true",help="After a hand click, speak type, words, and confirm/retry/cancel")
     parser.add_argument("--mic-device",type=lambda value:int(value) if value.isdigit() else value,help="sounddevice microphone index or name (default: system input)")
-    parser.add_argument("--speech-language",default="en-US",help="Google transcription language")
+    parser.add_argument("--speech-backend",choices=("google","whispercpp"),default="google")
+    parser.add_argument("--whisper-port",type=int,default=8080,help="Local whisper-server port")
+    parser.add_argument("--speech-language",default="en-US",help="Transcription language")
     parser.add_argument("--serial-port", help="auto, or Metro USB port such as COM6 or /dev/cu.usbmodem...")
     parser.add_argument("--hand-stream", action="store_true", help="Receive normalized hand+gesture UDP packets")
     parser.add_argument("--hand-click", action="store_true", default=True, help="Default: one click gesture; snap to nearby roots or plant at cursor")

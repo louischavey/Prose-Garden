@@ -25,6 +25,8 @@ def main():
     parser.add_argument("--enable-pinch", action="store_true", help="Also accept experimental pinch rule as the same click")
     parser.add_argument("--voice-input",action="store_true",help="Keyboard-free plant type, dictation and spoken confirmation")
     parser.add_argument("--mic-device")
+    parser.add_argument("--speech-backend",choices=("google","whispercpp"),default="google")
+    parser.add_argument("--whisper-port",type=int,default=8080)
     parser.add_argument("--speech-language",default="en-US")
     parser.add_argument("--plant-pose")
     parser.add_argument("--cultivate-pose")
@@ -44,7 +46,8 @@ def main():
     if args.load:
         garden_args += ["--load", args.load]
     if args.voice_input:
-        garden_args += ["--voice-input","--speech-language",args.speech_language]
+        garden_args += ["--voice-input","--speech-language",args.speech_language,
+                        "--speech-backend",args.speech_backend,"--whisper-port",str(args.whisper_port)]
     if args.mic_device is not None:
         garden_args += ["--mic-device",args.mic_device]
     if args.interaction == "click":

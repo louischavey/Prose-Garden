@@ -8,3 +8,6 @@ output/
 test-output/
 camera-profile*.json
 .DS_Store
+
+# Local Mac speech runtime and downloaded model
+local-speech/

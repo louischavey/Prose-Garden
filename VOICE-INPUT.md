@@ -1,6 +1,6 @@
 # Keyboard-free plant type, words, and confirmation
 
-This reuses the existing sounddevice microphone capture and SpeechRecognition Google transcription path. No new dependencies/models are added. It needs internet and microphone access on the computer running garden.py. Audio is sent to Google for recognition; this code keeps recordings in memory and does not save audio files.
+This reuses sounddevice capture and adds WebRTC VAD for speech detection. Google remains the default backend; optional whispercpp transcribes locally without cloud fallback. Both need microphone access. Google sends audio online; local mode sends audio only to localhost. Recordings stay in memory.
 
 ## Start on Mac
 
@@ -21,7 +21,7 @@ Use your working camera/profile/layout flags. Allow microphone access for Termin
 5. Confirm uses the existing transactional Water action and JSON checkpoint. Retry clears just the current unsubmitted draft and re-records words. Cancel discards the current draft/selection without modifying any accepted poem.
 6. After saving, the microphone stops. The next visitor/entry starts with a new hand click. Further clicks during entry cannot redirect the draft. No keyboard, Mic button, or Water button is required in this flow.
 
-Recording windows have fixed durations. Wait through Transcribing online and the next Listening message rather than speaking during the gap. Poem words are interpreted as text only during the words phase: e.g. the word confirm can itself be a poem word. Confirmation commands are only interpreted during the separate review phase.
+Recordings now end after speech plus about 0.8 seconds of silence. The 4/7/4-second windows are maximum capture times, including the wait to begin speaking. No detected speech triggers a retry without transcription. Wait through Transcribing and the next Listening message rather than speaking during the gap. Poem words are interpreted as text only during the words phase: e.g. confirm can itself be a poem word. Commands are interpreted during separate review.
 
 After three recognition/validation failures, recording pauses. Pinch again to retry the SAME target/phase. This keeps bad network/audio from recording indefinitely. Network or microphone failure cannot save an unconfirmed contribution. Stop pauses voice input while keeping a draft; the Mic button can restart voice review as an operator fallback. Read-aloud is blocked during active voice entry to avoid recording playback.
 
@@ -49,4 +49,32 @@ Synthetic integration tests cover new plant/type/words/explicit confirmation, cu
 
 ## Exhibit display
 
-The side panel shows Type / Words / Confirm, recording or transcription state, and the draft awaiting confirmation. It replaces the keyboard entry controls in voice mode. Cultivation keeps the chosen plant selected after submission, with a gold outline and root halo plus a SELECTED label. Camera mode focuses attention in the full garden without zooming or changing the calibrated cursor coordinates; choosing empty ground clears that focus. Cursor labels use cream lettering on solid dark green. The original grass stays vivid inside the planting border, with greyed reserved edges.
+The side panel shows Type / Words / Confirm, recording or transcription state, and the draft awaiting confirmation. It replaces the keyboard entry controls in voice mode. Cultivation keeps the chosen plant selected after submission, with the original cream root marker, other plants faded, and a persistent SELECTED label. Camera mode focuses attention in the full garden without zooming or changing the calibrated cursor coordinates; choosing empty ground clears that focus. Cursor labels use cream lettering on solid dark green. The original grass stays vivid inside the planting border, with greyed reserved edges.
+
+## Local speech on the M4 / 16 GB exhibit Mac
+
+Stop Poetree, sync the Git source, and run from the project folder:
+
+```sh
+.venv/bin/python -m pip install -r requirements-garden.txt
+brew install cmake
+sh start_local_speech.sh
+```
+
+First run clones whisper.cpp, builds its Metal server and downloads pretrained small.en. It needs internet for setup and Apple developer tools. If tools are missing, run `xcode-select --install`, finish installation, then retry. Leave this Terminal open; subsequent runs reuse the build/model. Wait for the server to report listening on 127.0.0.1:8080.
+
+In another Terminal, from the same folder:
+
+```sh
+.venv/bin/python start_camera_garden.py --confirm-setup --enable-pinch --voice-input --speech-backend whispercpp --camera 0
+```
+
+Keep your working camera/profile/mic-device flags. The panel says the mic stays on this Mac; recognition status says Transcribing locally. Omitting --speech-backend keeps Google. Local failure never uploads to Google. Read-aloud still uses the existing online service independently. Ctrl-C in the server Terminal stops recognition. The ignored local-speech directory must be set up separately on each Mac.
+
+## Future hardening / acceptance
+
+Target: M4 Mac mini, 16 GB, one warm small.en model. Benchmark base.en only if small.en is too slow. Capture is 16 kHz mono; verify the microphone supports it. WebRTC VAD detects speech, not visitor identity; gallery conversation can extend recording to the cap. Test a close mic, initial consonants, pauses, silence, accents, ambient commands, and camera responsiveness. Measure end-of-speech to displayed transcript across at least 20 planting/cultivation entries. Compare exact words and command success against Google before calling accuracy equivalent. Preserve confirmation, target locking, bounded retries and stale transcript rejection.
+
+Tests cover early stopping, no speech, cancellation, caps, and a real loopback HTTP request containing valid WAV audio. Native Mac build, Metal inference, microphone, model quality and speed remain unverified on this Windows machine.
+
+Server protocol: https://github.com/ggml-org/whisper.cpp/tree/master/examples/server

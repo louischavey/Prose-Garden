@@ -365,16 +365,16 @@ class GardenApp:
             plant = self.garden.snap_root(*self.hand_cursor, self.hand_hover) if self.hand_cursor else None
             self.hand_hover = plant.id if plant else None
             flow = self.voice_flow
-            if flow is not None and flow.active and flow.phase != "error":
+            if flow is not None and flow.active and flow.phase not in ("error", "confirm"):
                 self.hand_gate.interrupt()
                 continue
-            retry = flow is not None and flow.phase == "error"
-            target = (self.selected or "voice-retry") if retry else self.hand_hover
+            locked = flow is not None and flow.phase in ("error", "confirm")
+            target = (self.selected or "voice-locked") if locked else self.hand_hover
             event = self.hand_gate.update(observation, received, target_id=target)
             if event is not None:
                 intent = event
             if intent and (self.hand_cursor is None or observation["gesture"] != "click" or
-                           observation["score"] < self.hand_gate.score or intent["target_id"] != target):
+                           intent["target_id"] != target):
                 intent = None
             if intent and intent["target_id"] is None and math.hypot((intent["x"]-observation["x"])*WORLD[0],
                                                                      (intent["y"]-observation["y"])*WORLD[1]) > 48:
@@ -567,7 +567,7 @@ class GardenApp:
             self.backgrounds.clear()
             # One cover-scaled field avoids visible seams in the supplied raster.
             ratio = max(size[0]/self.texture.get_width(), size[1]/self.texture.get_height())
-            image = self.pg.transform.scale(self.texture, (math.ceil(self.texture.get_width()*ratio), math.ceil(self.texture.get_height()*ratio)))
+            image = self.pg.transform.smoothscale(self.texture, (math.ceil(self.texture.get_width()*ratio), math.ceil(self.texture.get_height()*ratio)))
             surface = self.pg.Surface(size)
             surface.blit(image, ((size[0]-image.get_width())//2, (size[1]-image.get_height())//2))
             self.backgrounds[size] = surface
@@ -674,7 +674,7 @@ class GardenApp:
                     if self.hand_click:
                         label = "Cultivate this plant" if hovered else "Plant here" if self.garden.plantable(*cursor) else "Reserved edge"
                         if self.voice_flow is not None and self.voice_flow.active:
-                            label = "Hold pinch 2s to retry" if self.voice_flow.phase == "error" else "Voice target locked"
+                            label = "Hold pinch 2s to retry" if self.voice_flow.phase == "error" else "Open pinch, then hold to confirm" if self.voice_flow.phase == "confirm" and self.hand_gate.latched else "Hold pinch 2s to confirm" if self.voice_flow.phase == "confirm" else "Voice target locked"
                         elif self.hand_gate.latched:
                             label = "Open pinch to rearm"
                         elif self.hand_gate.progress > 0:
@@ -885,7 +885,7 @@ class GardenApp:
             self.draw_dirt_overlay()
         pg.draw.rect(self.screen, (241, 239, 226), self.panel, border_radius=10)
         x = self.panel.x+16
-        title = "Cultivate this plant" if self.selected else "Plant a poem"
+        title = "Cultivate this plant" if self.selected else "Plant your thoughts"
         self.label("Garden finished" if self.finished else title, x, 102, font=self.ui.title)
         if self.voice_flow is not None:
             flow = self.voice_flow
@@ -916,10 +916,9 @@ class GardenApp:
             self.panel_text(self.draft or "Your spoken words appear here.", x+8, 318, 280)
             self.screen.set_clip(old)
             self.label(f"{len(self.draft.split())} / 5 words", x, 380, font=pg.font.Font(None, 19))
-            self.label("Say confirm to save; retry or cancel.", x, 400, font=pg.font.Font(None, 19))
+            self.label("Confirm: say it or hold pinch 2s.", x, 400, font=pg.font.Font(None, 19))
             self.read_rect.top = 442
             self.read_rect.height = max(30, self.panel.bottom-64-self.read_rect.top)
-            self.label("Mic uses Google / internet required", x, 421, font=pg.font.Font(None, 17))
         else:
             if self.selected:
                 plant = self.garden.get(self.selected)
@@ -942,7 +941,6 @@ class GardenApp:
             self.button("Water", (x, 345, 92, 34), "water", True)
             self.button("Mic / end", (x+102, 345, 94, 34), "mic", self.dictation.busy)
             self.button("Focus", (x+206, 345, 92, 34), "focus", self.focus)
-            self.label("Mic sends audio to Google for transcription.", x, 390, font=pg.font.Font(None, 17))
         old = self.screen.get_clip()
         self.screen.set_clip(self.read_rect)
         if self.selected:
@@ -958,7 +956,8 @@ class GardenApp:
             self.max_scroll = max(0, ty+26+self.scroll-self.read_rect.bottom)
         else:
             self.max_scroll = 0
-            self.label("Your poem appears here in entry order.", self.read_rect.x, self.read_rect.y)
+            self.panel_text("Your thoughts appear here. A poem, a rambling, something to remember...",
+                            self.read_rect.x, self.read_rect.y)
         self.screen.set_clip(old)
         self.scroll = min(self.scroll, self.max_scroll)
         self.button("Read aloud", (x, self.panel.bottom-46, 140, 32), "read")

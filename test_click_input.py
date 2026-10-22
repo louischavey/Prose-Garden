@@ -53,10 +53,48 @@ class ClickTests(unittest.TestCase):
         progress=gate.progress
         gate.update(packet(gesture="unknown",score=.2),.85)
         gate.update(packet(gesture="click"),.95)
-        self.assertAlmostEqual(gate.progress,progress)
+        self.assertGreater(gate.progress,progress)
         gate.update(packet(state="no_hand"),1.)
         self.assertEqual(gate.progress,0)
         self.assertIsNone(gate.update(packet(gesture="click"),1.1))
+        self.assertEqual(gate.progress,0)
+
+    def test_late_hold_accepts_weaker_click_but_weak_signal_cannot_start(self):
+        gate=ClickGate()
+        gate.update(packet(state="outside"),0)
+        gate.update(packet(state="outside"),.31)
+        gate.update(packet(gesture="click",score=.5),.4)
+        self.assertEqual(gate.progress,0)
+        event=None
+        for i in range(23):
+            event=gate.update(packet(gesture="click",score=1. if i<15 else .55),.5+i*.1,target_id="A")
+            if event: break
+        self.assertIsNotNone(event)
+        self.assertEqual(event["target_id"],"A")
+
+    def test_none_label_does_not_release_but_open_pinch_does(self):
+        gate=ClickGate()
+        gate.update(packet(state="outside"),0)
+        gate.update(packet(state="outside"),.31)
+        for i in range(13):
+            gate.update(packet(gesture="click"),.4+i*.1,target_id="A")
+        progress=gate.progress
+        for tick in (1.7,1.8,1.9):
+            gate.update(packet(gesture="unknown",raw_pose="None",score=1.),tick,target_id="A")
+        self.assertEqual(gate.progress,progress)
+        gate.update(packet(gesture="click"),2.,target_id="A")
+        self.assertGreater(gate.progress,progress)
+        gate.update(packet(gesture="unknown",raw_pose="None",click_source="pinch_release"),2.1)
+        self.assertEqual(gate.progress,0)
+
+    def test_uncertainty_alone_never_finishes_a_hold(self):
+        gate=ClickGate()
+        gate.update(packet(state="outside"),0)
+        gate.update(packet(state="outside"),.31)
+        for i in range(19):
+            self.assertIsNone(gate.update(packet(gesture="click"),.4+i*.1,target_id="A"))
+        for i in range(20):
+            self.assertIsNone(gate.update(packet(gesture="unknown",raw_pose="None"),2.3+i*.1,target_id="A"))
         self.assertEqual(gate.progress,0)
 
     def test_root_snap_and_hysteresis_ignore_foliage(self):

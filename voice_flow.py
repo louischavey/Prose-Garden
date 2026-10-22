@@ -34,7 +34,7 @@ class VoiceFlow:
     DURATIONS={"type":4,"words":7,"confirm":4}
     PROMPTS={"type":"Say: flower, tree, or fern",
              "words":"Say 1-5 words for this plant",
-             "confirm":"Say: confirm, retry, or cancel"}
+             "confirm":"Say confirm or hold pinch 2s"}
 
     def __init__(self,app):
         self.app=app
@@ -62,6 +62,8 @@ class VoiceFlow:
         self.pending=True
         self.ticket=None
         self.ready_at=time.monotonic()+delay
+        if phase == "confirm" and getattr(self.app,"hand_gate",None) is not None:
+            self.app.hand_gate.interrupt()  # Require release and a fresh review hold.
         self.app.status=self.PROMPTS[phase]+". Listening starts shortly."
 
     def begin(self):
@@ -70,7 +72,14 @@ class VoiceFlow:
         self.schedule("words" if self.app.selected else "type")
 
     def retry_click(self):
-        if self.phase=="error":
+        if self.phase=="confirm" and self.app.draft.strip() and (self.app.selected,self.app.pending)==self.target:
+            self.app.dictation.cancel()  # In-flight voice results cannot change a confirmed draft.
+            self.ticket=None
+            before=len(self.app.garden.history)
+            self.app.action("water")
+            if len(self.app.garden.history)==before:
+                self.fail("Submission was not accepted: "+self.app.status)
+        elif self.phase=="error":
             self.failures=0
             self.schedule(self.retry_phase)
         else:

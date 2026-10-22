@@ -1,3 +1,5 @@
+For the fault-tolerant voice exhibit, run `.venv/bin/python run_exhibit.py --camera 0`. See EXHIBIT-RUN.md for importing current poems, crash recovery, logs and limits.
+
 # Run Poetree on Mac or Windows
 
 Keyboard-free input is available with `--voice-input`: after a hand click, speak plant type for a new root, then 1–5 words, then confirm/retry/cancel. Start with `start_camera_garden.py --confirm-setup --enable-pinch --voice-input`. See **VOICE-INPUT.md** for microphone permissions/device selection, recording windows, and the full visitor flow. It uses the existing online Google transcription service and never saves words without confirmation.

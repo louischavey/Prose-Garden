@@ -19,6 +19,8 @@ def main():
     parser.add_argument("--profile", default="camera-profile.json")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--load", help="Saved garden path relative to project folder")
+    parser.add_argument("--output", help="Stable save basename for exhibit recovery")
+    parser.add_argument("--resilient", action="store_true", help="Retry camera crashes up to three times, keeping garden open")
     parser.add_argument("--gesture-source", choices=("model",), default="model")
     parser.add_argument("--interaction", choices=("click", "legacy"), default="click")
     parser.add_argument("--click-pose", choices=("Closed_Fist","Open_Palm","Victory","Pointing_Up","Thumb_Up"), default="Thumb_Up")
@@ -39,10 +41,12 @@ def main():
         _, args.plant_pose, args.cultivate_pose = pose_configuration(args.gesture_source, args.plant_pose, args.cultivate_pose)
     except ValueError as exc:
         parser.error(str(exc))
-    garden_args = [sys.executable, str(ROOT/"garden.py"), "--hand-stream", "--gallery-mode",
+    garden_args = [sys.executable, "-u", str(ROOT/"garden.py"), "--hand-stream", "--gallery-mode",
                    "--hand-rows", str(args.rows), "--hand-cols", str(args.cols), "--hand-port", str(args.port)]
     if args.load:
         garden_args += ["--load", args.load]
+    if args.output:
+        garden_args += ["--output", args.output]
     if args.voice_input:
         garden_args += ["--voice-input","--speech-language",args.speech_language]
     if args.mic_device is not None:
@@ -51,7 +55,7 @@ def main():
         garden_args += ["--hand-click"]
     else:
         garden_args += ["--legacy-hand-gestures"]
-    camera_args = [sys.executable, str(ROOT/"camera_stream.py"), "--camera", str(args.camera),
+    camera_args = [sys.executable, "-u", str(ROOT/"camera_stream.py"), "--camera", str(args.camera),
                    "--rows", str(args.rows), "--cols", str(args.cols), "--port", str(args.port),
                    "--profile", str(ROOT/args.profile), "--calibrate" if args.calibrate else "--confirm-setup",
                    "--plant-pose", args.plant_pose, "--cultivate-pose", args.cultivate_pose,
@@ -66,9 +70,24 @@ def main():
         if garden.poll() is not None:
             return garden.returncode or 1
         camera = subprocess.Popen(camera_args, cwd=ROOT)
+        camera_retries = 0
         while garden.poll() is None:
             if camera.poll() is not None:
+                if args.resilient and camera.returncode and camera_retries < 3:
+                    camera_retries += 1
+                    delay = min(8, 2**camera_retries)
+                    print(f"Camera failed; retry {camera_retries}/3 in {delay}s. Keep camera/tray fixed.", flush=True)
+                    deadline = time.monotonic()+delay
+                    while garden.poll() is None and time.monotonic() < deadline:
+                        time.sleep(.2)
+                    if garden.poll() is not None:
+                        break
+                    retry_args = ["--confirm-setup" if value == "--calibrate" else value for value in camera_args]
+                    camera = subprocess.Popen(retry_args, cwd=ROOT)
+                    continue
                 print("Camera stopped. Garden remains usable with mouse; close garden to finish/save.")
+                if args.resilient:
+                    return garden.wait()
                 return garden.wait() or camera.returncode
             time.sleep(.2)
         return garden.returncode

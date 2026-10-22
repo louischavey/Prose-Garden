@@ -177,6 +177,14 @@ class ClickGate(IntentGate):
     def progress(self):
         return min(1., self.elapsed/self.hold) if self.candidate is not None else 0.
 
+    @property
+    def required_score(self):
+        return self.score - .25*self.progress
+
+    @property
+    def uncertainty_grace(self):
+        return .2 + .25*self.progress
+
     def update(self, data, now=None, target_id=None):
         now = time.monotonic() if now is None else now
         identity = (data["session"], data["calibration"])
@@ -185,7 +193,9 @@ class ClickGate(IntentGate):
             self.identity = identity
         delta = max(0., now-self.last_time) if self.last_time is not None else 0.
         self.last_time = now
-        neutral = data["state"] == "outside" or (data["state"] == "ok" and data["gesture"] == "unknown" and data["score"] >= self.score)
+        # MediaPipe's literal None label is uncertainty, not an intentional release.
+        neutral = data["state"] == "outside" or (data["state"] == "ok" and data["gesture"] == "unknown" and data["score"] >= self.score and
+                  (data.get("raw_pose") not in ("None", "") or data.get("click_source") == "pinch_release"))
         if neutral:
             self.candidate = self.since = None
             self.elapsed = 0.
@@ -196,13 +206,13 @@ class ClickGate(IntentGate):
                 self.latched = False
             return None
         self.release_since = None
-        if self.latched or data["state"] != "ok" or data["gesture"] != "click" or data["score"] < self.score:
+        if self.latched or data["state"] != "ok" or data["gesture"] != "click" or data["score"] < self.required_score:
             # Brief uncertain classifications pause progress; lost/outside hands never count.
             uncertain = data["state"] in ("ok", "ambiguous") and not self.latched
             if uncertain and self.candidate is not None:
                 if self.gap_since is None:
                     self.gap_since = now
-                if now-self.gap_since <= .2:
+                if now-self.gap_since <= self.uncertainty_grace:
                     return None
             self.candidate = self.since = None
             self.elapsed = 0.
@@ -217,8 +227,11 @@ class ClickGate(IntentGate):
             self.elapsed = 0.
         elif self.gap_since is None:
             self.elapsed += delta
-        elif now-self.gap_since > .2:
+        elif now-self.gap_since > self.uncertainty_grace:
             self.elapsed = 0.
+        else:
+            # Only restored click evidence can bridge a brief uncertain interval.
+            self.elapsed += (now-self.gap_since)*.5
         self.gap_since = None
         if self.elapsed >= self.hold:
             self.latched = True

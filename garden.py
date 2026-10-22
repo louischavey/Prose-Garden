@@ -365,10 +365,10 @@ class GardenApp:
             plant = self.garden.snap_root(*self.hand_cursor, self.hand_hover) if self.hand_cursor else None
             self.hand_hover = plant.id if plant else None
             flow = self.voice_flow
-            if flow is not None and flow.active and flow.phase not in ("error", "confirm"):
+            if flow is not None and flow.active and flow.phase != "error":
                 self.hand_gate.interrupt()
                 continue
-            locked = flow is not None and flow.phase in ("error", "confirm")
+            locked = flow is not None and flow.phase == "error"
             target = (self.selected or "voice-locked") if locked else self.hand_hover
             event = self.hand_gate.update(observation, received, target_id=target)
             if event is not None:
@@ -674,7 +674,7 @@ class GardenApp:
                     if self.hand_click:
                         label = "Cultivate this plant" if hovered else "Plant here" if self.garden.plantable(*cursor) else "Reserved edge"
                         if self.voice_flow is not None and self.voice_flow.active:
-                            label = "Hold pinch 2s to retry" if self.voice_flow.phase == "error" else "Open pinch, then hold to confirm" if self.voice_flow.phase == "confirm" and self.hand_gate.latched else "Hold pinch 2s to confirm" if self.voice_flow.phase == "confirm" else "Voice target locked"
+                            label = "Hold pinch 2s to retry" if self.voice_flow.phase == "error" else "Voice target locked"
                         elif self.hand_gate.latched:
                             label = "Open pinch to rearm"
                         elif self.hand_gate.progress > 0:
@@ -751,8 +751,8 @@ class GardenApp:
             if action in PLANTS:
                 self.kind = action
             elif action == "water":
-                if self.voice_flow is not None and self.voice_flow.active and self.voice_flow.phase!="confirm":
-                    raise ValueError("Finish voice entry and review the draft before confirming.")
+                if self.voice_flow is not None and self.voice_flow.active and self.voice_flow.phase!="submitting":
+                    raise ValueError("Wait for voice transcription to finish.")
                 if self.finished:
                     raise ValueError("Garden finished. Reopen its JSON to continue.")
                 if self.dictation.busy:
@@ -815,7 +815,7 @@ class GardenApp:
                     elif self.draft.strip():
                         self.voice_flow.target=(self.selected,self.pending)
                         self.voice_flow.failures=0
-                        self.voice_flow.schedule("confirm")
+                        self.voice_flow.submit()
                     else:
                         self.voice_flow.begin()
                     return
@@ -863,7 +863,7 @@ class GardenApp:
             self.label(f"{hardware_status} | peak {self.dirt_peak} | " +
                        ("ready" if self.tap_detector.armed else "lift finger to rearm"), 210, 52,
                        font=self.pg.font.Font(None, 18))
-        actions = [("Undo", "undo")]
+        actions = []
         if not self.gallery_mode:
             actions += [("Save", "save"), ("Finish", "finish")]
         for i, (label, action) in enumerate(actions):
@@ -897,9 +897,9 @@ class GardenApp:
                 self.label("New planting spot selected", x, 139)
             else:
                 self.panel_text("Point, then hold pinch for 2 seconds.", x, 139)
-            steps = [("Type", "type"), ("Words", "words"), ("Confirm", "confirm")]
+            steps = [("Type", "type"), ("Thoughts", "words")]
             for i, (name, phase) in enumerate(steps):
-                rect = pg.Rect(x+i*100, 194, 94, 29)
+                rect = pg.Rect(x+i*154, 194, 144, 29)
                 active = flow.phase == phase
                 pg.draw.rect(self.screen, INK if active else (221, 226, 209), rect, border_radius=6)
                 glyph = self.ui.small.render(name, True, PAPER if active else INK)
@@ -916,7 +916,7 @@ class GardenApp:
             self.panel_text(self.draft or "Your spoken words appear here.", x+8, 318, 280)
             self.screen.set_clip(old)
             self.label(f"{len(self.draft.split())} / 5 words", x, 380, font=pg.font.Font(None, 19))
-            self.label("Confirm: say it or hold pinch 2s.", x, 400, font=pg.font.Font(None, 19))
+            self.label("Words plant automatically.", x, 400, font=pg.font.Font(None, 19))
             self.read_rect.top = 442
             self.read_rect.height = max(30, self.panel.bottom-64-self.read_rect.top)
         else:
@@ -960,8 +960,6 @@ class GardenApp:
                             self.read_rect.x, self.read_rect.y)
         self.screen.set_clip(old)
         self.scroll = min(self.scroll, self.max_scroll)
-        self.button("Read aloud", (x, self.panel.bottom-46, 140, 32), "read")
-        self.button("Stop", (x+152, self.panel.bottom-46, 146, 32), "stop")
         # Status fits the footer; full messages also remain available in the title.
         self.label(self.status, 22, self.screen.get_height()-25, font=pg.font.Font(None, 19))
         pg.display.flip()
@@ -1098,7 +1096,7 @@ def main():
     parser.add_argument("--gallery-mode", "--gallery_mode", action="store_true",
                         help="Hide Save and Finish buttons; close still saves the garden")
     parser.add_argument("--voice", default="en-US-AriaNeural")
-    parser.add_argument("--voice-input",action="store_true",help="After a hand click, speak type, words, and confirm/retry/cancel")
+    parser.add_argument("--voice-input",action="store_true",help="After a hand click, speak type and words; valid words plant automatically")
     parser.add_argument("--mic-device",type=lambda value:int(value) if value.isdigit() else value,help="sounddevice microphone index or name (default: system input)")
     parser.add_argument("--speech-language",default="en-US",help="Transcription language")
     parser.add_argument("--serial-port", help="auto, or Metro USB port such as COM6 or /dev/cu.usbmodem...")

@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--interaction", choices=("click", "legacy"), default="click")
     parser.add_argument("--click-pose", choices=("Closed_Fist","Open_Palm","Victory","Pointing_Up","Thumb_Up"), default="Thumb_Up")
     parser.add_argument("--enable-pinch", action="store_true", help="Also accept experimental pinch rule as the same click")
-    parser.add_argument("--voice-input",action="store_true",help="Keyboard-free plant type, dictation and spoken confirmation")
+    parser.add_argument("--voice-input",action="store_true",help="Keyboard-free plant type and automatic planting from dictation")
     parser.add_argument("--mic-device")
     parser.add_argument("--speech-language",default="en-US")
     parser.add_argument("--plant-pose")

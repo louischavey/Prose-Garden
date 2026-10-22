@@ -27,7 +27,7 @@ class GardenTests(unittest.TestCase):
             actions = [action for _, action in app.buttons]
             self.assertNotIn("save", actions)
             self.assertNotIn("finish", actions)
-            self.assertIn("undo", actions)
+            self.assertNotIn("undo", actions)
             app.handle_garden_tap(.99, .99)
             self.assertIsNone(app.pending)
             # Legacy edge plants remain reachable and waterable.

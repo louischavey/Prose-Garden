@@ -51,8 +51,7 @@ class VoiceTests(unittest.TestCase):
         app.handle_hand_click(.8,.7)
         self.assertEqual(app.pending,(.3,.6))
         self.say("we grow together")
-        self.assertEqual(len(app.garden.plants),0)  # Dictation alone never saves.
-        self.say("confirm")
+        self.assertEqual(len(app.garden.plants),1)
         first=app.selected
         self.assertEqual(app.voice_flow.phase,"idle")
         self.assertEqual(app.garden.get(first).session.words,["we","grow","together"])
@@ -60,7 +59,6 @@ class VoiceTests(unittest.TestCase):
         self.assertTrue(app.focus)
         self.assertEqual(app.voice_flow.phase,"words")
         self.say("under shared skies")
-        self.say("yes")
         self.assertEqual(app.selected,first)
         self.assertTrue(app.focus)
         self.assertEqual(app.garden.get(first).session.words,["we","grow","together","under","shared","skies"])
@@ -75,21 +73,14 @@ class VoiceTests(unittest.TestCase):
         self.assertFalse(app.focus)
         self.assertEqual(app.voice_flow.phase,"type")
 
-    def test_retry_cancel_and_commands_are_not_poem_words(self):
+    def test_type_cancel_and_visitor_controls_removed(self):
         app=self.app
         app.handle_hand_click(.3,.6)
-        self.say("flower")
-        self.say("wrong phrase")
-        app.action("read")
-        self.assertTrue(app.voice_flow.active)
-        self.assertEqual(app.voice_flow.phase,"confirm")
-        self.say("retry")
-        self.assertEqual(app.draft,"")
-        self.say("correct phrase")
         self.say("cancel")
-        self.assertEqual(app.draft,"")
         self.assertIsNone(app.pending)
         self.assertEqual(len(app.garden.plants),0)
+        app.draw()
+        self.assertFalse(any(action in ("undo","read","stop") for _,action in app.buttons))
 
     def test_invalid_word_count_and_three_errors_pause_then_pinch_retries(self):
         app=self.app
@@ -131,8 +122,8 @@ class VoiceTests(unittest.TestCase):
         app.handle_hand_click(.3,.6)
         self.say("flower")
         self.say("confirm")  # In words phase this is a poem word, not a command.
-        self.assertEqual(app.draft,"confirm")
-        self.assertEqual(len(app.garden.plants),0)
+        self.assertEqual(app.garden.plants[0].session.words,["confirm"])
+        self.assertEqual(len(app.garden.plants),1)
 
     def test_voice_pause_starts_fresh_hold_without_changing_locked_target(self):
         app=self.app
@@ -156,32 +147,23 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(app.pending,(.3,.6))
         self.assertEqual(app.voice_flow.phase,"type")
 
-    def test_fresh_hold_confirms_locked_draft_and_rejects_late_transcript(self):
-        from test_hand_input import packet
+    def test_automatic_submit_once_and_duplicate_transcript_is_ignored(self):
         app=self.app
         app.handle_hand_click(.3,.6)
         self.say("flower")
-        self.say("shared roots")
-        ticket=self.listen()  # A command recording may still be in flight.
-        def frame(observation,tick):
-            app.hand.batch=[(tick,observation)]
-            with patch.object(app.hand,"poll",return_value=observation):
-                app.poll_hand_click()
-        # Holding on entry cannot silently confirm: release is required first.
-        for i in range(24): frame(packet(gesture="click"),i*.1)
-        self.assertEqual(len(app.garden.plants),0)
-        frame(packet(state="outside"),2.4)
-        frame(packet(state="outside"),2.71)
-        for i in range(23):
-            frame(packet(gesture="click",x=.8,y=.8),2.8+i*.1)
+        ticket=self.listen()
+        app.dictation.busy=False
+        app.events.put(("dictation",(ticket,"shared roots")))
+        app.process_messages()
         self.assertEqual(len(app.garden.plants),1)
         plant=app.garden.plants[0]
         self.assertEqual((plant.x,plant.y),(.3,.6))
         self.assertEqual(plant.session.words,["shared","roots"])
-        app.events.put(("dictation",(ticket,"retry")))
+        app.events.put(("dictation",(ticket,"duplicate")))
         app.process_messages()
         self.assertEqual(app.voice_flow.phase,"idle")
         self.assertEqual(len(app.garden.history),1)
+        self.assertEqual(app.draft,"")
 
     def test_dictation_worker_publishes_result_after_busy_clears(self):
         events=queue.Queue()

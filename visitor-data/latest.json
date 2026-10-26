@@ -1,0 +1,11 @@
+{
+  "format": "poetree-garden",
+  "version": 1,
+  "seed": 10863822153563057309,
+  "growth_words": 2,
+  "turns": true,
+  "connectors": false,
+  "serial": 0,
+  "history": [],
+  "plants": []
+}

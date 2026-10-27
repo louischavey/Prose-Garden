@@ -46,8 +46,8 @@ def inside(path: str | Path) -> Path:
 
 def tokenize(text: str) -> list[str]:
     words = text.split()
-    if not 1 <= len(words) <= 5:
-        raise ValueError("Enter one to five words per submission.")
+    if not 1 <= len(words) <= MAX_WORDS:
+        raise ValueError(f"Enter one to {MAX_WORDS} words per submission.")
     if any(len(w) > 120 for w in words):
         raise ValueError("Please keep each word to 120 characters or fewer.")
     if any(unicodedata.category(c) in ("Cc", "Cs") for w in words for c in w):
@@ -79,8 +79,9 @@ class Grammar:
     F/T/brackets -> themselves. Already placed words never reproduce.
     """
 
-    def __init__(self, plant: str, seed: int):
+    def __init__(self, plant: str, seed: int, flower_balance=False):
         self.plant = plant
+        self.flower_balance = flower_balance
         self.rng = random.Random(seed)
         self.serial = 0
         self.generation = 0
@@ -99,6 +100,14 @@ class Grammar:
         if self.generation == 0:
             return buds[0]
         if self.plant == "flower":
+            if self.flower_balance:
+                # Keep one head, but continue feeding stem and both leaves.
+                want = "leaf" if self.generation == 1 else {0:"stem",1:"leaf"}.get(self.generation%5,"petal")
+                pool = [b for b in buds if b.args[1] == want]
+                if pool:
+                    oldest = min(b.args[2] for b in pool)
+                    pool = [b for b in pool if b.args[2] == oldest]
+                return self.rng.choice(pool or buds)
             # One leaf, then a flower head early; later include remaining leaves.
             if self.generation == 1:
                 pool = [b for b in buds if b.args[1] == "leaf"]
@@ -127,7 +136,7 @@ class Grammar:
             if kind == "petal" and len(word_ids) > 1:
                 # A gently bending petal; fixed angles independent of word length.
                 result.append(Module("T", (-24 if i == 0 else 48 / (len(word_ids) - 1),)))
-            result.append(Module("F", (word_id, kind, level)))
+            result.append(Module("F", (word_id, "axis" if kind == "stem" else kind, level)))
             if kind == "axis" and self.plant == "fern":
                 result.append(Module("T", (3 / (level + 1),)))
         if kind == "axis":
@@ -139,6 +148,9 @@ class Grammar:
                 # Six radial sites. Later submissions form outer whorls, so a
                 # long flower poem stays a flower rather than becoming a tree.
                 phase = self.rng.choice((-8, 0, 8))
+                if self.flower_balance:
+                    # The continuing stem sits before the sole flower head.
+                    result += [self.bud("stem",level+1)]
                 for angle in (-150, -90, -30, 30, 90, 150):
                     result += self.branch(angle + phase, "petal", level)
             else:
@@ -148,6 +160,8 @@ class Grammar:
                 result += [self.bud("axis", level + 1)]
         elif kind == "petal":
             result += [Module("]"), self.bud("petal", level + 1)]
+        elif self.flower_balance and kind in ("stem", "leaf"):
+            result += [self.bud(kind,level+1,side)]
         return result
 
     def grow(self, word_ids):
@@ -159,21 +173,30 @@ class Grammar:
 
 
 class Session:
-    def __init__(self, plant="flower", seed=None, turns=True, connectors=False):
+    def __init__(self, plant="flower", seed=None, turns=True, connectors=False, growth_words=0, flower_balance=True):
         self.plant = plant
         self.seed = secrets.randbits(64) if seed is None else seed
         self.turns = turns
         self.connectors = connectors
+        if type(growth_words) is not int or not 0 <= growth_words <= 100:
+            raise ValueError("Growth words must be an integer from 0 to 100.")
+        self.growth_words = growth_words
+        if type(flower_balance) is not bool:
+            raise ValueError("Invalid flower balance setting.")
+        self.flower_balance = flower_balance if plant == "flower" else False
         self.submissions: list[str] = []
         self.words: list[str] = []
-        self.grammar = Grammar(plant, self.seed)
+        self.grammar = Grammar(plant, self.seed, self.flower_balance)
         self.saved_layout = None
 
     def rebuild(self):
         self.words = [w for text in self.submissions for w in tokenize(text)]
-        self.grammar = Grammar(self.plant, self.seed)
+        self.grammar = Grammar(self.plant, self.seed, self.flower_balance)
         if self.turns:
             lengths = [len(tokenize(text)) for text in self.submissions]
+            if self.growth_words:
+                lengths = [min(self.growth_words, length-i) for length in lengths
+                           for i in range(0, length, self.growth_words)]
         else:
             # Fixed groups of three, independent of terminal submission boundaries.
             lengths = [min(3, len(self.words) - i) for i in range(0, len(self.words), 3)]
@@ -205,6 +228,8 @@ class Session:
             "grammar": [m.pack() for m in self.grammar.tape],
             "choices": self.grammar.choices,
             "random_state": self.grammar.rng.getstate(), "layout": layout,
+            "growth_words": self.growth_words,
+            "flower_balance": self.flower_balance,
         }
 
     @classmethod
@@ -227,7 +252,7 @@ class Session:
         submissions = data.get("submissions")
         if not isinstance(submissions, list) or len(submissions) > MAX_WORDS or not all(isinstance(s, str) for s in submissions):
             raise ValueError("Invalid submissions.")
-        obj = cls(data["plant"], data["seed"], data["turns"], data["connectors"])
+        obj = cls(data["plant"], data["seed"], data["turns"], data["connectors"], data.get("growth_words",0),data.get("flower_balance",False))
         obj.submissions = submissions
         obj.rebuild()
         if len(obj.words) > MAX_WORDS:
@@ -318,7 +343,10 @@ class Renderer:
         top_level = max((m.args[2] for m in session.grammar.tape if m.op == "F"), default=0)
         origins, head_extent = self.flower_origins(session, extra)
         stem_length = sum(self.measure(session.words[m.args[0]])[0] + 14 for m in session.grammar.tape if m.op == "F" and m.args[1] == "axis")
-        flower_stem_scale = max(1.5, head_extent * 1.25 / max(1, stem_length))
+        if session.flower_balance:
+            flower_stem_scale = min(2., max(1.,head_extent*1.25/max(1,stem_length)))
+        else:
+            flower_stem_scale = max(1.5, head_extent * 1.25 / max(1, stem_length))
         for index, m in enumerate(session.grammar.tape):
             if m.op == "[":
                 stack.append((x, y, angle))
@@ -631,7 +659,7 @@ class App:
         self.speech = Speech(self.events, args.voice)
         self.finished = False
         self.running = True
-        self.status = "Enter one to five words in the terminal."
+        self.status = "Enter your thoughts in the terminal."
         self.buttons = []
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         self.save_base = inside(args.output or f"output/{session.plant}-{stamp}")

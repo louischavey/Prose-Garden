@@ -63,7 +63,7 @@ class GrowthTests(unittest.TestCase):
     def test_invalid_input_is_nonmutating(self):
         s = self.make()
         before = s.pack(None)
-        for text in ("", "a b c d e f", "x" * 121, "a\x00b"):
+        for text in ("", "word " * (p.MAX_WORDS+1), "x" * 121, "a\x00b"):
             with self.assertRaises(ValueError):
                 s.add(text)
             self.assertEqual(before, s.pack(None))

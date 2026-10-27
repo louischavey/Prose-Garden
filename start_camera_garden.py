@@ -12,6 +12,7 @@ def main():
     from gesture_trials import pose_configuration
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--camera", type=int, default=0)
+    parser.add_argument("--mouse-only",action="store_true",help="Use mouse selection with voice; do not open a camera")
     parser.add_argument("--rows", type=int, default=2)
     parser.add_argument("--cols", type=int, default=3)
     parser.add_argument("--calibrate", action="store_true")
@@ -28,10 +29,17 @@ def main():
     parser.add_argument("--voice-input",action="store_true",help="Keyboard-free plant type and automatic planting from dictation")
     parser.add_argument("--mic-device")
     parser.add_argument("--speech-language",default="en-US")
+    parser.add_argument("--word-compression",type=float,default=.35)
+    parser.add_argument("--growth-words",type=int)
+    parser.add_argument("--words-seconds",type=float,default=15.,help="Maximum spoken-thought duration after speech begins")
     parser.add_argument("--plant-pose")
     parser.add_argument("--cultivate-pose")
     args = parser.parse_args()
-    if not args.calibrate and not args.confirm_setup:
+    if not 0 <= args.word_compression <= 1 or not 1 <= args.words_seconds <= 60:
+        parser.error("word-compression must be 0..1 and words-seconds must be 1..60")
+    if args.growth_words is not None and not 0 <= args.growth_words <= 100:
+        parser.error("growth-words must be 0..100")
+    if not args.mouse_only and not args.calibrate and not args.confirm_setup:
         parser.error("Use --calibrate for a new setup or --confirm-setup for an unchanged setup")
     if args.enable_pinch and args.interaction != "click":
         parser.error("--enable-pinch requires single-click interaction")
@@ -41,10 +49,14 @@ def main():
         _, args.plant_pose, args.cultivate_pose = pose_configuration(args.gesture_source, args.plant_pose, args.cultivate_pose)
     except ValueError as exc:
         parser.error(str(exc))
-    garden_args = [sys.executable, "-u", str(ROOT/"garden.py"), "--hand-stream", "--gallery-mode",
+    garden_args = [sys.executable, "-u", str(ROOT/"garden.py"), "--gallery-mode",
                    "--hand-rows", str(args.rows), "--hand-cols", str(args.cols), "--hand-port", str(args.port)]
+    garden_args += ["--mouse-only"] if args.mouse_only else ["--hand-stream"]
     if args.load:
         garden_args += ["--load", args.load]
+    garden_args += ["--word-compression",str(args.word_compression),"--words-seconds",str(args.words_seconds)]
+    if args.growth_words is not None:
+        garden_args += ["--growth-words",str(args.growth_words)]
     if args.output:
         garden_args += ["--output", args.output]
     if args.voice_input:
@@ -69,6 +81,8 @@ def main():
         time.sleep(.8)
         if garden.poll() is not None:
             return garden.returncode or 1
+        if args.mouse_only:
+            return garden.wait()
         camera = subprocess.Popen(camera_args, cwd=ROOT)
         camera_retries = 0
         while garden.poll() is None:

@@ -79,7 +79,7 @@ class GardenTests(unittest.TestCase):
         garden.water_plant(plant.id, "next words")
         before = garden.pack()
         with self.assertRaises(ValueError):
-            garden.water_plant(plant.id, "this has more than five words")
+            garden.water_plant(plant.id, "x"*121)
         self.assertEqual(before, garden.pack())
         self.assertEqual(plant.session.words, ["first", "word", "next", "words"])
         garden.undo()

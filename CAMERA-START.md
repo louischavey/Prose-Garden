@@ -1,3 +1,5 @@
+Current persistence and tuning: normal run_exhibit.py restarts now RESUME accepted plants/locations; --fresh explicitly archives and clears. Thoughts are no longer truncated to five words. See TUNING.md for --word-compression, --growth-words, --words-seconds and remote Git snapshots.
+
 Current voice interaction: Type (new plant only), then Thoughts. Valid 1–5-word transcripts save automatically; there is no confirmation step or Undo/Read aloud/Stop visitor button. This supersedes older interaction descriptions below. See VOICE-INPUT.md.
 
 For the fault-tolerant voice exhibit, run `.venv/bin/python run_exhibit.py --camera 0`. See EXHIBIT-RUN.md for importing current poems, crash recovery, logs and limits.

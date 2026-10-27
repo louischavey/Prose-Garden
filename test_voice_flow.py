@@ -101,17 +101,17 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(app.voice_flow.phase,"words")
 
 
-    def test_long_transcripts_keep_first_five_words_for_planting_and_cultivation(self):
+    def test_long_transcripts_preserve_all_words_for_planting_and_cultivation(self):
         app=self.app
         app.handle_hand_click(.3,.6)
         self.say("fern")
         self.say("One, two three four five six seven")
         plant=app.garden.plants[0]
-        self.assertEqual(plant.session.words,["One,","two","three","four","five"])
-        self.assertIn("Kept the first 5 words",app.status)
+        self.assertEqual(plant.session.words,["One,","two","three","four","five","six","seven"])
+        self.assertNotIn("Kept the first 5 words",app.status)
         app.handle_hand_click(.3,.6,target_id=plant.id)
         self.say("six seven eight nine ten eleven")
-        self.assertEqual(plant.session.words[-5:],["six","seven","eight","nine","ten"])
+        self.assertEqual(plant.session.words[-6:],["six","seven","eight","nine","ten","eleven"])
         self.assertEqual(len(app.garden.history),2)
         self.assertEqual(app.voice_flow.phase,"idle")
     def test_stale_transcript_cannot_write_to_changed_target(self):
@@ -204,6 +204,65 @@ class VoiceTests(unittest.TestCase):
         while not events.empty(): messages.append(events.get_nowait())
         self.assertIn(("dictation",(dictation.ticket,"flower")),messages)
         self.assertEqual(recognizer.recognize_google.call_args.kwargs["language"],"en-US")
+
+
+class MouseVoiceTests(unittest.TestCase):
+    def test_mouse_voice_plant_cultivate_retry_and_checkpoint_without_camera(self):
+        from plant_poem import ROOT
+        app=GardenApp(Garden(42),argparse.Namespace(mouse_only=True,voice_input=True,
+                      output="test-output/mouse-voice",voice="en-US-AriaNeural"))
+        app.dictation=FakeDictation()
+        def click(x,y):
+            app.draw()
+            app.event(app.pg.event.Event(app.pg.MOUSEBUTTONDOWN,button=1,
+                      pos=(round(app.area.x+x*app.area.width),round(app.area.y+y*app.area.height))))
+        def say(text):
+            app.voice_flow.ready_at=0
+            app.voice_flow.poll()
+            ticket=app.dictation.ticket
+            app.dictation.busy=False
+            app.events.put(("dictation",(ticket,text)))
+            app.process_messages()
+        try:
+            self.assertIsNone(app.hand)
+            click(.4,.6)
+            target=app.pending
+            say("flower")
+            click(.8,.7)
+            self.assertEqual(app.pending,target)
+            say("we can plant with a mouse too")
+            plant=app.garden.plants[0]
+            self.assertEqual(plant.session.words,"we can plant with a mouse too".split())
+            self.assertTrue((ROOT/"test-output/mouse-voice.json").exists())
+            click(*target)
+            self.assertEqual(app.selected,plant.id)
+            self.assertEqual(app.voice_flow.phase,"words")
+            self.assertFalse(app.focus)
+            for _ in range(3):app.voice_flow.fail("unavailable")
+            click(.8,.7)
+            self.assertEqual(app.selected,plant.id)
+            self.assertEqual(app.voice_flow.phase,"words")
+            say("and cultivate it again")
+            loaded=Garden.load(ROOT/"test-output/mouse-voice.json")
+            self.assertEqual(loaded.pack(),app.garden.pack())
+            self.assertEqual(len(app.garden.plants),1)
+        finally:
+            app.dictation.cancel();app.speech.close();app.pg.quit()
+
+    def test_mouse_launcher_never_starts_camera(self):
+        import start_camera_garden as launcher
+        garden=MagicMock(returncode=0)
+        garden.poll.return_value=None
+        garden.wait.return_value=0
+        with patch("sys.argv",["start_camera_garden.py","--mouse-only","--voice-input"]), \
+             patch.object(launcher.subprocess,"Popen",return_value=garden) as spawn, \
+             patch.object(launcher.time,"sleep"):
+            self.assertEqual(launcher.main(),0)
+        spawn.assert_called_once()
+        command=spawn.call_args.args[0]
+        self.assertIn("--mouse-only",command)
+        self.assertIn("--voice-input",command)
+        self.assertNotIn("--hand-stream",command)
 
 
 if __name__ == '__main__': unittest.main()

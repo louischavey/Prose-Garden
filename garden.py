@@ -43,9 +43,12 @@ class Plant:
 class Garden:
     """UI-independent model. Coordinates are normalized ground coordinates."""
 
-    def __init__(self, seed=None, turns=True, connectors=False):
+    def __init__(self, seed=None, turns=True, connectors=False, growth_words=2):
         self.seed = seed if seed is not None else random.SystemRandom().getrandbits(64)
         self.turns, self.connectors = turns, connectors
+        if type(growth_words) is not int or not 0 <= growth_words <= 100:
+            raise ValueError("Growth words must be from 0 to 100.")
+        self.growth_words = growth_words
         self.plants = []
         self.history = []
         self.serial = 0
@@ -88,7 +91,7 @@ class Garden:
         if len(self.plants) >= 100:
             raise ValueError("This prototype supports 100 plants per garden.")
         seed = random.Random(f"{self.seed}:{self.serial}").getrandbits(64)
-        session = Session(kind, seed, self.turns, self.connectors)
+        session = Session(kind, seed, self.turns, self.connectors, self.growth_words)
         session.add(text)
         renderer = GardenRenderer()
         renderer.update(session)
@@ -124,8 +127,26 @@ class Garden:
         self.history.pop()
         return plant.id
 
+    def rebalance_flowers(self):
+        """Reflow old flowers in memory; preserve every word, ID and root."""
+        updates=[]
+        for plant in self.plants:
+            old=plant.session
+            if old.plant != "flower" or old.flower_balance:
+                continue
+            session=Session(old.plant,old.seed,old.turns,old.connectors,old.growth_words,True)
+            session.submissions=old.submissions[:]
+            session.rebuild()
+            renderer=GardenRenderer()
+            renderer.update(session)
+            updates.append((plant,session,renderer))
+        for plant,session,renderer in updates:
+            plant.session,plant.renderer=session,renderer
+        return len(updates)
+
     def pack(self):
         return {"format": "poetree-garden", "version": 1, "seed": self.seed,
+                "growth_words": self.growth_words,
                 "turns": self.turns, "connectors": self.connectors, "serial": self.serial,
                 "history": self.history[:], "plants": [
                     {"id": p.id, "x": p.x, "y": p.y, "session": p.session.pack(p.renderer.layout)}
@@ -149,7 +170,7 @@ class Garden:
         rows = data.get("plants")
         if not isinstance(rows, list) or len(rows) > 100:
             raise ValueError("Invalid plant list.")
-        garden = cls(data["seed"], data["turns"], data["connectors"])
+        garden = cls(data["seed"], data["turns"], data["connectors"], data.get("growth_words",2))
         for row in rows:
             if not isinstance(row, dict) or not all(k in row for k in ("id", "x", "y", "session")):
                 raise ValueError("Invalid plant record.")
@@ -252,6 +273,8 @@ class Dictation:
 class GardenApp:
     def __init__(self, garden, args):
         self.garden, self.args = garden, args
+        garden.rebalance_flowers()
+        self.word_compression = getattr(args,"word_compression",.35)
         self.gallery_mode = getattr(args, "gallery_mode", False)
         self.dirt = None
         self.hand = None
@@ -342,7 +365,7 @@ class GardenApp:
         self.selected = plant.id if plant else None
         self.pending = None if plant else (x,y)
         self.focus, self.zoom, self.pan, self.scroll = bool(plant), 1, [0,0], 0
-        self.status = "Cultivate selected plant: enter 1-5 words, then Enter/Water." if plant else "New planting spot: choose type, enter 1-5 words, then Enter/Water."
+        self.status = "Cultivate selected plant: enter words, then Enter/Water." if plant else "New planting spot: choose type, enter words, then Enter/Water."
         if self.voice_flow is not None:
             self.voice_flow.begin()
 
@@ -409,7 +432,7 @@ class GardenApp:
         self.dictation.cancel()
         if gesture == "open_palm":
             self.selected, self.pending = occupants[0].id, None
-            self.status = "Cultivate: type or dictate 1-5 words, then Enter / Water."
+            self.status = "Cultivate: type or dictate words, then Enter / Water."
         else:
             # Keep anchor within its section AND the existing safe planting border.
             x, y = (col+.5)/cols, (row+.5)/rows
@@ -419,7 +442,7 @@ class GardenApp:
                 self.status = "Section has no safe root anchor. Use a 2x2 or 2x3 layout."
                 return
             self.selected, self.pending = None, (x, y)
-            self.status = "Plant: choose type, type or dictate 1-5 words, then Enter / Water."
+            self.status = "Plant: choose type, type or dictate words, then Enter / Water."
         self.focus, self.zoom, self.pan, self.scroll = False, 1, [0, 0], 0
 
     def poll_hand(self):
@@ -458,9 +481,8 @@ class GardenApp:
         base = self.save_base.with_suffix("") if self.save_base.suffix in (".json", ".png") else self.save_base
         base.parent.mkdir(parents=True, exist_ok=True)
         target = inside(base.with_suffix(".json"))
-        pending = inside(base.with_suffix(".checkpoint.json"))
-        pending.write_text(json.dumps(self.garden.pack(), ensure_ascii=False, indent=2), encoding="utf-8")
-        pending.replace(target)
+        from durable_save import save_json
+        save_json(target,self.garden.pack())
 
     def handle_dirt_tap(self, row, col):
         """Select by root's grid cell, never by an overlapping word sprite."""
@@ -609,12 +631,13 @@ class GardenApp:
             pg.draw.rect(surface, (206, 217, 160), inner, 1, border_radius=8)
         previous = surface.get_clip()
         surface.set_clip(area)
-        scale = min(area.width/WORLD[0], area.height/WORLD[1]) * PLANT_SCALE
+        base_scale = min(area.width/WORLD[0], area.height/WORLD[1]) * PLANT_SCALE
         ordered = sorted(self.garden.plants, key=lambda p: p.y)
         if selected:
             ordered.sort(key=lambda p: p.id == selected)
         hits = []
         for plant in ordered:
+            scale = base_scale * max(.2, max(1.,len(plant.session.words)/5.)**(-self.word_compression))
             ox, oy = area.x+plant.x*area.width, area.y+plant.y*area.height
             pg.draw.ellipse(surface, (85, 110, 57), (ox-17, oy-4, 34, 9))
             faded = selected is not None and plant.id != selected
@@ -687,6 +710,11 @@ class GardenApp:
     def handle_garden_tap(self, x_normalized, y_normalized):
         """Public tap API: call on the UI thread; coordinates exclude controls."""
         self.garden.position(x_normalized, y_normalized)
+        if self.finished:
+            return
+        if self.voice_flow is not None and self.voice_flow.active:
+            self.voice_flow.retry_click()
+            return
         if self.probe_map is not None:
             if not self.probe_map.mapping:
                 self.handle_dirt_tap(min(3, int(y_normalized*4)), min(5, int(x_normalized*6)))
@@ -706,8 +734,10 @@ class GardenApp:
             return
         self.selected = plant.id if plant else None
         self.pending = None if plant else (x_normalized, y_normalized)
-        self.focus, self.zoom, self.pan, self.scroll = bool(plant), 1, [0, 0], 0
-        self.status = "Add 1-5 words to water this plant." if plant else "Choose a plant and enter its first 1-5 words."
+        self.focus, self.zoom, self.pan, self.scroll = bool(plant) and self.voice_flow is None, 1, [0, 0], 0
+        self.status = "Add words to water this plant." if plant else "Choose a plant and enter its first words."
+        if self.voice_flow is not None:
+            self.voice_flow.begin()
 
     def water_plant(self, plant_id, text):
         if self.finished:
@@ -724,7 +754,7 @@ class GardenApp:
             self.select_all = False
         text = " ".join(text.splitlines())
         if len(self.draft)+len(text) > 1000:
-            self.status = "Draft is too long; water 1-5 words at a time."
+            self.status = "Draft is too long; water words at a time."
             return
         self.draft = self.draft[:self.caret]+text+self.draft[self.caret:]
         self.caret += len(text)
@@ -767,7 +797,7 @@ class GardenApp:
                     raise ValueError("Click the grass or an existing plant first.")
                 self.draft, self.caret, self.select_all = "", 0, False
                 self.status = "Watered. Add more words, or click another spot."
-                if self.hand is not None:
+                if self.hand is not None or self.voice_flow is not None:
                     try:
                         self.checkpoint()
                     except OSError as exc:
@@ -784,7 +814,7 @@ class GardenApp:
                     self.selected, self.focus = None, False
                 self.sprite_cache.clear()
                 self.status = "Last watering undone." if changed else "Nothing to undo."
-                if self.hand is not None and changed:
+                if (self.hand is not None or self.voice_flow is not None) and changed:
                     try:
                         self.checkpoint()
                     except OSError as exc:
@@ -840,14 +870,13 @@ class GardenApp:
         if base.suffix in (".json", ".png"):
             base = base.with_suffix("")
         base.parent.mkdir(parents=True, exist_ok=True)
-        pending = inside(base.with_suffix(".pending.json"))
-        pending.write_text(json.dumps(self.garden.pack(), ensure_ascii=False, indent=2), encoding="utf-8")
+        from durable_save import save_json
+        save_json(inside(base.with_suffix(".json")),self.garden.pack())
         image = self.pg.Surface(WORLD)
         self.draw_garden(image, image.get_rect())
         png = inside(base.with_suffix(".pending.png"))
         self.pg.image.save(image, str(png))
         png.replace(inside(base.with_suffix(".png")))
-        pending.replace(inside(base.with_suffix(".json")))
         self.status = f"Saved {base.name}.json + .png"
 
     def draw(self):
@@ -896,7 +925,7 @@ class GardenApp:
             elif self.pending:
                 self.label("New planting spot selected", x, 139)
             else:
-                self.panel_text("Point, then hold pinch for 2 seconds.", x, 139)
+                self.panel_text("Click a spot or an existing plant." if getattr(self.args,"mouse_only",False) else "Point, then hold pinch for 2 seconds.", x, 139)
             steps = [("Plant Type", "type"), ("Thoughts", "words")]
             for i, (name, phase) in enumerate(steps):
                 rect = pg.Rect(x+i*154, 194, 144, 29)
@@ -915,7 +944,7 @@ class GardenApp:
             self.screen.set_clip(preview.inflate(-12, -8))
             self.panel_text(self.draft or "Your spoken words appear here.", x+8, 318, 280)
             self.screen.set_clip(old)
-            self.label(f"{len(self.draft.split())} / 5 words", x, 380, font=pg.font.Font(None, 19))
+            self.label(f"{len(self.draft.split())} words", x, 380, font=pg.font.Font(None, 19))
             self.label("Words plant automatically.", x, 400, font=pg.font.Font(None, 19))
             self.read_rect.top = 442
             self.read_rect.height = max(30, self.panel.bottom-64-self.read_rect.top)
@@ -927,7 +956,7 @@ class GardenApp:
                 self.label("Choose a spot on the grass.", x, 139)
                 for i, kind in enumerate(PLANTS):
                     self.button("Tree" if kind == "conifer" else kind.title(), (x+i*100, 174, 94, 34), kind, self.kind == kind)
-            self.label(self.voice_flow.prompt if self.voice_flow else "Add 1-5 words / Enter to water", x, 222)
+            self.label(self.voice_flow.prompt if self.voice_flow else "Add words / Enter to water", x, 222)
             pg.draw.rect(self.screen, (221, 231, 207) if self.select_all else (255, 253, 243), self.input_rect, border_radius=6)
             old = self.screen.get_clip()
             self.screen.set_clip(self.input_rect.inflate(-12, -8))
@@ -1057,7 +1086,7 @@ class GardenApp:
                 if self.voice_flow is not None and self.voice_flow.receive(data[0],text=data[1]):
                     continue
                 self.insert_text((" " if self.draft else "")+data[1])
-                self.status = "Review your draft, then Water. Use 1-5 words."
+                self.status = "Review your draft, then Water. Use words."
             elif kind == "dictation_error" and data[0] == self.dictation.ticket:
                 if self.voice_flow is not None and self.voice_flow.receive(data[0],error=data[1]):
                     continue
@@ -1091,12 +1120,15 @@ def main():
     parser.add_argument("--load", help="Saved garden JSON inside this folder")
     parser.add_argument("--output", help="Save basename inside this folder")
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--word-compression",type=float,default=.35,help="0=no compression; higher values shrink longer plants more (0..1)")
+    parser.add_argument("--growth-words",type=int,help="Words per growth step: 1=fast form, 2=default, 0=one step per contribution; affects new plants")
     parser.add_argument("--connectors", action="store_true")
     parser.add_argument("--no-turns", action="store_true")
     parser.add_argument("--gallery-mode", "--gallery_mode", action="store_true",
                         help="Hide Save and Finish buttons; close still saves the garden")
     parser.add_argument("--voice", default="en-US-AriaNeural")
     parser.add_argument("--voice-input",action="store_true",help="After a hand click, speak type and words; valid words plant automatically")
+    parser.add_argument("--words-seconds",type=float,default=15.,help="Maximum speech duration for thoughts (1..60 seconds)")
     parser.add_argument("--mic-device",type=lambda value:int(value) if value.isdigit() else value,help="sounddevice microphone index or name (default: system input)")
     parser.add_argument("--speech-language",default="en-US",help="Transcription language")
     parser.add_argument("--serial-port", help="auto, or Metro USB port such as COM6 or /dev/cu.usbmodem...")
@@ -1113,6 +1145,10 @@ def main():
     parser.add_argument("--touch-threshold", type=int, default=12, help="Minimum baseline-minus-filtered delta")
     parser.add_argument("--release-threshold", type=int, default=6, help="All probes must fall to this level to rearm")
     args = parser.parse_args()
+    if not 1 <= args.words_seconds <= 60:
+        parser.error("words-seconds must be 1..60")
+    if not 0 <= args.word_compression <= 1 or (args.growth_words is not None and not 0 <= args.growth_words <= 100):
+        parser.error("word-compression must be 0..1 and growth-words must be 0..100")
     if args.mouse_only:
         args.serial_port = None
         args.map_probes = False
@@ -1120,10 +1156,12 @@ def main():
         parser.error("--map-probes requires --serial-port")
     if args.hand_stream and (args.serial_port or args.mouse_only):
         parser.error("Use --hand-stream separately from --serial-port / --mouse-only")
-    if args.voice_input and not (args.hand_stream and args.hand_click):
-        parser.error("--voice-input requires --hand-stream in single-click mode")
+    if args.voice_input and not (args.mouse_only or (args.hand_stream and args.hand_click)):
+        parser.error("--voice-input requires --mouse-only or --hand-stream in single-click mode")
     try:
         garden = Garden.load(args.load) if args.load else Garden(args.seed, not args.no_turns, args.connectors)
+        if args.growth_words is not None:
+            garden.growth_words=args.growth_words
         GardenApp(garden, args).run()
     except (ValueError, OSError, RuntimeError) as exc:
         parser.exit(1, f"Poetree: {exc}\n")

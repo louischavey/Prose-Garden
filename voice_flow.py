@@ -33,7 +33,7 @@ def command(text):
 class VoiceFlow:
     DURATIONS={"type":4,"words":7}
     PROMPTS={"type":"Say: flower, tree, or fern",
-             "words":"Say 1-5 words for this plant"}
+             "words":"Share your thoughts for this plant"}
 
     def __init__(self,app):
         self.app=app
@@ -51,10 +51,10 @@ class VoiceFlow:
     @property
     def prompt(self):
         if self.phase=="error":
-            return "Voice paused. Hold pinch 2s to retry."
+            return "Voice paused. Click to retry." if getattr(self.app.args,"mouse_only",False) else "Voice paused. Hold pinch 2s to retry."
         if self.pending:
             return "Wait for Listening before speaking"
-        return self.PROMPTS.get(self.phase,"Hold pinch 2s on a plant or spot")
+        return self.PROMPTS.get(self.phase,"Click a plant or empty spot" if getattr(self.app.args,"mouse_only",False) else "Hold pinch 2s on a plant or spot")
 
     def schedule(self,phase,delay=0.):
         self.phase=phase
@@ -85,7 +85,8 @@ class VoiceFlow:
             self.pending=False
             self.app.speech.stop()
             self.app.status="Listening: "+self.PROMPTS[self.phase]
-            self.app.dictation.start(seconds=self.DURATIONS[self.phase])
+            seconds=getattr(self.app.args,"words_seconds",15.) if self.phase=="words" else self.DURATIONS[self.phase]
+            self.app.dictation.start(seconds=seconds)
             self.ticket=self.app.dictation.ticket
 
     def cancel(self,clear=False):
@@ -98,13 +99,13 @@ class VoiceFlow:
             self.app.caret=0
             self.app.select_all=False
             self.app.selected=self.app.pending=None
-            self.app.status="Cancelled. Pinch a new spot or plant to begin."
+            self.app.status="Cancelled. Click a new spot or plant to begin." if getattr(self.app.args,"mouse_only",False) else "Cancelled. Pinch a new spot or plant to begin."
 
     def submitted(self):
         failed="failed" in self.app.status.casefold()
         self.cancel(clear=False)
         if not failed:
-            self.app.status="Contribution saved. Pinch a spot or plant for the next entry."
+            self.app.status="Contribution saved. Click a spot or plant for the next entry." if getattr(self.app.args,"mouse_only",False) else "Contribution saved. Pinch a spot or plant for the next entry."
 
     def fail(self,message):
         self.failures+=1
@@ -118,7 +119,8 @@ class VoiceFlow:
                 gate.interrupt()
                 # A fresh two-second hold retries only this locked voice target.
                 gate.latched = False
-            self.app.status=message+". Voice paused; pinch to retry this same target."
+            retry="click" if getattr(self.app.args,"mouse_only",False) else "pinch"
+            self.app.status=message+f". Voice paused; {retry} to retry this same target."
         else:
             phase=self.phase
             self.schedule(phase,delay=1.2)
@@ -147,8 +149,7 @@ class VoiceFlow:
             self.schedule("words",delay=.7)
         elif self.phase=="words":
             words=text.split()
-            truncated=len(words)>5
-            text=" ".join(words[:5])
+            text=" ".join(words)
             try:
                 tokenize(text)
             except ValueError as exc:
@@ -158,10 +159,7 @@ class VoiceFlow:
             self.app.caret=len(text)
             self.app.select_all=False
             self.failures=0
-            before=len(self.app.garden.history)
             self.submit()
-            if truncated and len(self.app.garden.history)>before:
-                self.app.status+=" Kept the first 5 words."
         return True
 
     def submit(self):

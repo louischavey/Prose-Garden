@@ -43,26 +43,32 @@ def single_instance(path):
 def recover(checkpoint, initial=None):
     """Validate before launching: a corrupt save must never become an empty garden."""
     from garden import Garden
-    source = checkpoint if checkpoint.exists() else initial
-    if source is not None:
-        garden = Garden.load(source)
-    else:
-        garden = Garden()
+    from durable_save import save_json
+    backup=checkpoint.with_suffix(".backup.json")
+    source = checkpoint if checkpoint.exists() else backup if backup.exists() else initial
+    try:
+        garden = Garden.load(source) if source is not None else Garden()
+    except (ValueError,OSError):
+        if source != checkpoint or not backup.exists():
+            raise
+        garden=Garden.load(backup)
+        stamp=datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        checkpoint.replace(checkpoint.with_name(checkpoint.name+f".corrupt-{stamp}"))
+        print("Recovered previous checkpoint; preserved corrupt file for inspection.",flush=True)
     if not checkpoint.exists():
         checkpoint.parent.mkdir(parents=True, exist_ok=True)
-        pending = checkpoint.with_suffix(".starting.json")
-        pending.write_text(json.dumps(garden.pack(), ensure_ascii=False, indent=2), encoding="utf-8")
-        pending.replace(checkpoint)
+        save_json(checkpoint,garden.pack(),backup=False)
     return checkpoint
 
 
 def fresh_session(checkpoint):
     """Clear the visible garden for a manual launch, preserving previous accepted work."""
-    if checkpoint.exists():
-        archive = checkpoint.parent/"previous-sessions"
-        archive.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        checkpoint.replace(archive/f"{checkpoint.stem}-{stamp}.json")
+    archive = checkpoint.parent/"previous-sessions"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    for source,suffix in ((checkpoint,"json"),(checkpoint.with_suffix(".backup.json"),"backup.json")):
+        if source.exists():
+            archive.mkdir(parents=True,exist_ok=True)
+            source.replace(archive/f"{checkpoint.stem}-{stamp}.{suffix}")
 
 
 def stop_tree(child):
@@ -82,6 +88,21 @@ def stop_tree(child):
         else:
             child.kill()
         child.wait()
+
+
+def start_sync(checkpoint, logs):
+    """Publish once per manual launch, independently of the visitor processes."""
+    logs.mkdir(parents=True,exist_ok=True)
+    stamp=datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    log=logs/f"sync-{stamp}.log"
+    try:
+        with log.open("w",encoding="utf-8") as output:
+            subprocess.Popen([sys.executable,"-u",str(ROOT/"sync_garden.py"),
+                              "--source",str(checkpoint),"--publish","--non-interactive"],
+                             cwd=ROOT,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT)
+        print(f"Garden snapshot syncing in background. Result/log: {log}",flush=True)
+    except OSError as exc:
+        print(f"Snapshot sync could not start; exhibit will continue: {exc}",flush=True)
 
 
 def supervise(command, checkpoint, logs, initial=None, retries=3):
@@ -117,7 +138,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", default="output/exhibit", help="Persistent save basename")
     parser.add_argument("--load", help="Import an existing garden only if the exhibit checkpoint does not exist")
-    parser.add_argument("--resume", action="store_true", help="Keep the previous garden instead of starting empty")
+    parser.add_argument("--resume", action="store_true", help="Compatibility: resume is now the default")
+    parser.add_argument("--fresh",action="store_true",help="Explicitly archive the current garden and start empty")
+    parser.add_argument("--no-sync",action="store_true",help="Skip the automatic startup Git snapshot publish")
     args, forwarded = parser.parse_known_args()
     if any(value.split("=")[0] in ("--calibrate", "--legacy-hand-gestures", "--interaction") for value in forwarded):
         parser.error("Calibrate separately first; exhibit startup uses the saved setup and single-click voice flow")
@@ -130,8 +153,11 @@ def main():
                    "--output", str(base), "--load", str(checkpoint), *forwarded]
         # Global supervisor lock prevents accidental port/microphone competition.
         with single_instance(ROOT/"output/exhibit.lock"):
-            if not args.resume:
+            if args.fresh:
                 fresh_session(checkpoint)
+            recover(checkpoint,initial)
+            if not args.no_sync:
+                start_sync(checkpoint,ROOT/"output/logs")
             return supervise(command, checkpoint, ROOT/"output/logs", initial)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(1, f"Exhibit could not start: {exc}\n")

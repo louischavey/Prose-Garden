@@ -19,7 +19,7 @@ Keep your working camera/profile/layout/mic flags. See EXHIBIT-RUN.md before imp
 
 ## Visitor flow
 
-1. Open pinch to rearm, point at empty ground or a nearby snapped root, then hold pinch for two seconds. The cursor fills teal.
+1. Open pinch to rearm, point at empty ground or a nearby snapped root, then hold pinch for 0.75 seconds. The cursor fills teal.
 2. A new spot asks for flower, tree, or fern. Existing plants skip type selection.
 3. Wait for LISTENING and share your thoughts. Valid transcription automatically plants or cultivates the locked target and checkpoints it. No spoken or gesture confirmation is needed.
 4. The selected plant remains highlighted. Rearm and select another spot/plant for the next entry. Holds during type/word capture cannot redirect the contribution.

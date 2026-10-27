@@ -141,6 +141,12 @@ def main():
     parser.add_argument("--resume", action="store_true", help="Compatibility: resume is now the default")
     parser.add_argument("--fresh",action="store_true",help="Explicitly archive the current garden and start empty")
     parser.add_argument("--no-sync",action="store_true",help="Skip the automatic startup Git snapshot publish")
+    parser.add_argument("--camera",type=int,default=0)
+    parser.add_argument("--mic-device",default="1")
+    parser.add_argument("--hold-seconds",type=float,default=.75)
+    parser.add_argument("--word-compression",type=float,default=.35)
+    parser.add_argument("--words-seconds",type=float,default=15.)
+    parser.add_argument("--growth-words",type=int,default=2)
     args, forwarded = parser.parse_known_args()
     if any(value.split("=")[0] in ("--calibrate", "--legacy-hand-gestures", "--interaction") for value in forwarded):
         parser.error("Calibrate separately first; exhibit startup uses the saved setup and single-click voice flow")
@@ -150,6 +156,9 @@ def main():
         initial = inside(args.load) if args.load else None
         command = [sys.executable, "-u", str(ROOT/"start_camera_garden.py"),
                    "--confirm-setup", "--enable-pinch", "--voice-input", "--resilient",
+                   "--camera",str(args.camera),"--mic-device",args.mic_device,
+                   "--hold-seconds",str(args.hold_seconds),"--word-compression",str(args.word_compression),
+                   "--words-seconds",str(args.words_seconds),"--growth-words",str(args.growth_words),
                    "--output", str(base), "--load", str(checkpoint), *forwarded]
         # Global supervisor lock prevents accidental port/microphone competition.
         with single_instance(ROOT/"output/exhibit.lock"):

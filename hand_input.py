@@ -163,7 +163,7 @@ class IntentGate:
 
 class ClickGate(IntentGate):
     """One model gesture clicks either a stable nearby root or empty ground."""
-    def __init__(self, rows=2, cols=3, hold=2., **kwargs):
+    def __init__(self, rows=2, cols=3, hold=.75, **kwargs):
         super().__init__(rows, cols, hold=hold, **kwargs)
         self.elapsed = 0.
         self.gap_since = None
@@ -233,7 +233,7 @@ class ClickGate(IntentGate):
             # Only restored click evidence can bridge a brief uncertain interval.
             self.elapsed += (now-self.gap_since)*.5
         self.gap_since = None
-        if self.elapsed >= self.hold:
+        if self.elapsed >= self.hold-1e-9:
             self.latched = True
             self.candidate = self.since = None
             return dict(x=point[0], y=point[1], target_id=target_id)

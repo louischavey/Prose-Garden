@@ -59,3 +59,9 @@ run_exhibit.py now exports, commits and pushes the accepted garden once at start
 Flowers now allocate continued growth to their stem and both leaves, in addition to petals. After establishing the initial stem/leaf, each five growth steps allocate one to the stem, one to leaves and three to petals. There is still one flower head with six petal rays; stem growth advances that existing head rather than spawning new flowers. The head-driven stem spacing multiplier is bounded to 1..2 instead of expanding without a ceiling. Collision avoidance still independently adds local spacing where required. Tree/fern grammar and global compression/position mapping are unchanged.
 
 The session saves a flower_balance boolean. Old sessions lacking it still validate under their original rules. At garden-window startup, old flowers are transactionally rebuilt in memory using their original seeds, words, submission boundaries and growth setting; IDs, roots and history remain unchanged. The balanced layout is persisted by the normal next checkpoint/save, which retains the previous save as backup. Reading/exporting a JSON alone does not reflow it. No live saved poems are rewritten by the source-code update itself.
+
+Click timing now defaults to --hold-seconds 0.75 (range 0.2..5). It affects both the optional pinch and the model click, including voice retries. The teal ring remains as quick hold feedback. Pass this flag through run_exhibit.py, start_camera_garden.py or garden.py. Mouse clicks remain immediate.
+
+### Exhibit defaults
+
+Run `python run_exhibit.py` for camera 0, microphone 1, hold 0.75 seconds, word compression 0.35, thought capture up to 15 seconds and growth every 2 words. Voice, pinch, persistence, recovery and startup Git sync are enabled. `python run_exhibit.py --mouse-only` uses the same voice/render settings without camera capture. All flags can still override these defaults.

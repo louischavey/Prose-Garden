@@ -39,3 +39,7 @@ User now explicitly requests automatic startup publishing: run_exhibit.py invoke
 Mouse voice fallback: run_exhibit.py --mouse-only forwards through the launcher without opening a camera. Mouse selection starts guided voice input; active sessions lock the target and paused sessions accept a click to retry. Voice-mode checkpoints must work without a HandReceiver. Keep overview during mouse voice cultivation so clicks are not swallowed by drag/zoom focus.
 
 Flower-specific balance accepted by user: continue allocating words to stem/leaves (one stem, one leaf, three petal steps per cycle after establishment); cap head-driven stem spacing at 2x. Preserve one six-ray head, roots, every word and submission/history. Store flower_balance per session; legacy data validates with old grammar, then GardenApp transactionally rebalances old flowers in memory for the next normal checkpoint. Trees/ferns and camera mapping stay unchanged. See TUNING.md.
+
+Latest hold timing: default .75 seconds, configurable --hold-seconds (0.2..5) through all launchers. Keep the teal progress ring as fast recognition feedback, optimistic evidence policy and release latch. This supersedes prior two-second timing. Mouse selection stays immediate.
+
+run_exhibit.py now explicitly defaults camera0, microphone1, hold.75, compression.35, speech15s and growth2, per user request. Keep all flags overridable and --mouse-only as the camera-free fallback.

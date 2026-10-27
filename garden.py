@@ -336,7 +336,8 @@ class GardenApp:
         if getattr(args, "hand_stream", False):
             from hand_input import HandReceiver, IntentGate, ClickGate
             gate_type = ClickGate if self.hand_click else IntentGate
-            self.hand_gate = gate_type(getattr(args, "hand_rows", 2), getattr(args, "hand_cols", 3))
+            timing={"hold":getattr(args,"hold_seconds",.75)} if self.hand_click else {}
+            self.hand_gate = gate_type(getattr(args, "hand_rows", 2), getattr(args, "hand_cols", 3),**timing)
             self.hand = HandReceiver(getattr(args, "hand_host", "127.0.0.1"), getattr(args, "hand_port", 8765))
             self.status = "Camera mode: one visitor. Exit tray to arm. Gesture mappings are shown in camera preview/Terminal."
 
@@ -697,11 +698,11 @@ class GardenApp:
                     if self.hand_click:
                         label = "Cultivate this plant" if hovered else "Plant here" if self.garden.plantable(*cursor) else "Reserved edge"
                         if self.voice_flow is not None and self.voice_flow.active:
-                            label = "Hold pinch 2s to retry" if self.voice_flow.phase == "error" else "Voice target locked"
+                            label = f"Hold pinch {self.hand_gate.hold:g}s to retry" if self.voice_flow.phase == "error" else "Voice target locked"
                         elif self.hand_gate.latched:
                             label = "Open pinch to rearm"
                         elif self.hand_gate.progress > 0:
-                            label = "Hold pinch 2s"
+                            label = f"Hold pinch {self.hand_gate.hold:g}s"
                         self.badge(surface, label, (xy[0]+18, xy[1]-34), area.inflate(-8, -8))
                 fresh = self.hand.last_received is not None and time.monotonic()-self.hand.last_received < .5
                 status = self.hand.message if fresh else "Camera stream stopped - move outside tray after reconnect"
@@ -925,7 +926,7 @@ class GardenApp:
             elif self.pending:
                 self.label("New planting spot selected", x, 139)
             else:
-                self.panel_text("Click a spot or an existing plant." if getattr(self.args,"mouse_only",False) else "Point, then hold pinch for 2 seconds.", x, 139)
+                self.panel_text("Click a spot or an existing plant." if getattr(self.args,"mouse_only",False) else f"Point, then hold pinch {getattr(self.args,'hold_seconds',.75):g}s.", x, 139)
             steps = [("Plant Type", "type"), ("Thoughts", "words")]
             for i, (name, phase) in enumerate(steps):
                 rect = pg.Rect(x+i*154, 194, 144, 29)
@@ -1134,6 +1135,7 @@ def main():
     parser.add_argument("--serial-port", help="auto, or Metro USB port such as COM6 or /dev/cu.usbmodem...")
     parser.add_argument("--hand-stream", action="store_true", help="Receive normalized hand+gesture UDP packets")
     parser.add_argument("--hand-click", action="store_true", default=True, help="Default: one click gesture; snap to nearby roots or plant at cursor")
+    parser.add_argument("--hold-seconds",type=float,default=.75,help="Click/pinch hold duration (0.2..5 seconds)")
     parser.add_argument("--legacy-hand-gestures", dest="hand_click", action="store_false", help="Compatibility only: old two-gesture section selection")
     parser.add_argument("--hand-host", default="127.0.0.1", help="Bind address; use 0.0.0.0 only on trusted LAN")
     parser.add_argument("--hand-port", type=int, default=8765)
@@ -1145,6 +1147,8 @@ def main():
     parser.add_argument("--touch-threshold", type=int, default=12, help="Minimum baseline-minus-filtered delta")
     parser.add_argument("--release-threshold", type=int, default=6, help="All probes must fall to this level to rearm")
     args = parser.parse_args()
+    if not .2 <= args.hold_seconds <= 5:
+        parser.error("hold-seconds must be 0.2..5")
     if not 1 <= args.words_seconds <= 60:
         parser.error("words-seconds must be 1..60")
     if not 0 <= args.word_compression <= 1 or (args.growth_words is not None and not 0 <= args.growth_words <= 100):

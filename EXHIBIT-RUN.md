@@ -49,3 +49,7 @@ python run_exhibit.py --mouse-only --mic-device 1
 ```
 
 Use the actual microphone index. No camera is opened and no hand stream is required. Click empty ground to choose a planting location or click a root/plant to cultivate. The same guided type/thoughts transcription and automatic submission run, with persistence, checkpoint backups and startup Git sync unchanged. A click during capture cannot change the locked target; after voice pauses, clicking retries that target. The garden stays in overview so subsequent clicks remain usable. Microphone permission and online transcription still apply.
+
+### Exhibit defaults
+
+Run `python run_exhibit.py` for camera 0, microphone 1, hold 0.75 seconds, word compression 0.35, thought capture up to 15 seconds and growth every 2 words. Voice, pinch, persistence, recovery and startup Git sync are enabled. `python run_exhibit.py --mouse-only` uses the same voice/render settings without camera capture. All flags can still override these defaults.

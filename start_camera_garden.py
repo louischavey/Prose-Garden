@@ -32,9 +32,12 @@ def main():
     parser.add_argument("--word-compression",type=float,default=.35)
     parser.add_argument("--growth-words",type=int)
     parser.add_argument("--words-seconds",type=float,default=15.,help="Maximum spoken-thought duration after speech begins")
+    parser.add_argument("--hold-seconds",type=float,default=.75)
     parser.add_argument("--plant-pose")
     parser.add_argument("--cultivate-pose")
     args = parser.parse_args()
+    if not .2 <= args.hold_seconds <= 5:
+        parser.error("hold-seconds must be 0.2..5")
     if not 0 <= args.word_compression <= 1 or not 1 <= args.words_seconds <= 60:
         parser.error("word-compression must be 0..1 and words-seconds must be 1..60")
     if args.growth_words is not None and not 0 <= args.growth_words <= 100:
@@ -55,6 +58,7 @@ def main():
     if args.load:
         garden_args += ["--load", args.load]
     garden_args += ["--word-compression",str(args.word_compression),"--words-seconds",str(args.words_seconds)]
+    garden_args += ["--hold-seconds",str(args.hold_seconds)]
     if args.growth_words is not None:
         garden_args += ["--growth-words",str(args.growth_words)]
     if args.output:

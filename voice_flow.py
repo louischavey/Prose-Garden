@@ -51,10 +51,10 @@ class VoiceFlow:
     @property
     def prompt(self):
         if self.phase=="error":
-            return "Voice paused. Click to retry." if getattr(self.app.args,"mouse_only",False) else "Voice paused. Hold pinch 2s to retry."
+            return "Voice paused. Click to retry." if getattr(self.app.args,"mouse_only",False) else f"Voice paused. Hold pinch {getattr(self.app.args,'hold_seconds',.75):g}s to retry."
         if self.pending:
             return "Wait for Listening before speaking"
-        return self.PROMPTS.get(self.phase,"Click a plant or empty spot" if getattr(self.app.args,"mouse_only",False) else "Hold pinch 2s on a plant or spot")
+        return self.PROMPTS.get(self.phase,"Click a plant or empty spot" if getattr(self.app.args,"mouse_only",False) else f"Hold pinch {getattr(self.app.args,'hold_seconds',.75):g}s on a plant or spot")
 
     def schedule(self,phase,delay=0.):
         self.phase=phase
@@ -117,7 +117,7 @@ class VoiceFlow:
             gate = getattr(self.app, "hand_gate", None)
             if gate is not None:
                 gate.interrupt()
-                # A fresh two-second hold retries only this locked voice target.
+                # A fresh configured-duration hold retries only this locked voice target.
                 gate.latched = False
             retry="click" if getattr(self.app.args,"mouse_only",False) else "pinch"
             self.app.status=message+f". Voice paused; {retry} to retry this same target."

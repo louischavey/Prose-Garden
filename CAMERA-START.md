@@ -40,7 +40,7 @@ Later, if camera/tray/layout have stayed exactly in place:
 
 Recalibrate after moving or swapping camera, moving tray, or changing framing. Windows profiles are deliberately not packaged. The display Mac needs its own calibration if it captures the camera.
 
-One visitor at a time: move a visible hand outside the tray to arm, point at a root or empty ground, then hold thumbs-up for 2 seconds to click. The snapped root is highlighted and labeled Cultivate this plant; empty ground says Plant here. Then **choose type for a new plant, type 1–5 words and press Enter/Water**. A click selects; it never submits words. Release/rearm before another click. Optional Mic creates an editable online dictation draft; keyboard works offline. Escape clears an abandoned draft. Accepted Water/Undo actions automatically checkpoint JSON in camera mode. Close the garden window normally to also export PNG. Save output is in `output/`.
+One visitor at a time: move a visible hand outside the tray to arm, point at a root or empty ground, then hold thumbs-up for 0.75 seconds to click. The snapped root is highlighted and labeled Cultivate this plant; empty ground says Plant here. Then **choose type for a new plant, type 1–5 words and press Enter/Water**. A click selects; it never submits words. Release/rearm before another click. Optional Mic creates an editable online dictation draft; keyboard works offline. Escape clears an abandoned draft. Accepted Water/Undo actions automatically checkpoint JSON in camera mode. Close the garden window normally to also export PNG. Save output is in `output/`.
 
 ## Windows: same code
 

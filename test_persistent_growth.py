@@ -85,10 +85,14 @@ class PersistentGrowthTests(unittest.TestCase):
              patch("run_exhibit.single_instance",return_value=nullcontext()), \
              patch("run_exhibit.fresh_session") as fresh, \
              patch("run_exhibit.start_sync") as sync, \
-             patch("run_exhibit.supervise",return_value=0):
+             patch("run_exhibit.supervise",return_value=0) as run:
             self.assertEqual(main(),0)
             fresh.assert_not_called()
             sync.assert_called_once()
+            command=run.call_args.args[0]
+            for flag,value in (("--camera","0"),("--mic-device","1"),("--hold-seconds","0.75"),
+                               ("--word-compression","0.35"),("--words-seconds","15.0"),("--growth-words","2")):
+                self.assertEqual(command[command.index(flag)+1],value)
 
     def test_export_is_read_only_complete_and_does_not_publish(self):
         garden=Garden(42)

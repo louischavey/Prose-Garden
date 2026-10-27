@@ -29,23 +29,20 @@ class ClickTests(unittest.TestCase):
         self.assertIsNone(gate.update(click,1.7,target_id="A"))
         validate(click)
 
-    def test_default_two_second_hold_progress_and_single_activation(self):
+    def test_default_three_quarter_second_hold_and_single_activation(self):
         gate=ClickGate()
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
-        event=None
-        for i in range(21):
-            event=gate.update(packet(gesture="click"),.4+i*.1,target_id="root")
-            if i==10:
-                self.assertAlmostEqual(gate.progress,.5)
-            if i<20:
-                self.assertIsNone(event)
+        for i in range(16):
+            event=gate.update(packet(gesture="click"),.4+i*.05,target_id="root")
+            if i<15: self.assertIsNone(event)
+            if i==10: self.assertAlmostEqual(gate.progress,2/3)
         self.assertIsNotNone(event)
-        self.assertIsNone(gate.update(packet(gesture="click"),2.5,target_id="root"))
+        self.assertIsNone(gate.update(packet(gesture="click"),1.2,target_id="root"))
         self.assertEqual(gate.progress,0)
 
     def test_brief_uncertainty_pauses_but_loss_clears_progress(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=2.)
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
         for tick in (.4,.6,.8):
@@ -60,7 +57,7 @@ class ClickTests(unittest.TestCase):
         self.assertEqual(gate.progress,0)
 
     def test_late_hold_accepts_weaker_click_but_weak_signal_cannot_start(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=2.)
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
         gate.update(packet(gesture="click",score=.5),.4)
@@ -73,7 +70,7 @@ class ClickTests(unittest.TestCase):
         self.assertEqual(event["target_id"],"A")
 
     def test_none_label_does_not_release_but_open_pinch_does(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=2.)
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
         for i in range(13):
@@ -88,7 +85,7 @@ class ClickTests(unittest.TestCase):
         self.assertEqual(gate.progress,0)
 
     def test_uncertainty_alone_never_finishes_a_hold(self):
-        gate=ClickGate()
+        gate=ClickGate(hold=2.)
         gate.update(packet(state="outside"),0)
         gate.update(packet(state="outside"),.31)
         for i in range(19):
